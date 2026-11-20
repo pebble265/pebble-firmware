@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>pebble(a)</title>
+<style>
+:root{
+  --bg:#F2F2F5; --card:#FFFFFF; --fill:#F2F2F5; --line:#ECECEC; --text:#0B0B0F; --muted:#8A8A90; --faint:#A6A6AB;
+  --blue:#3D8BF7; --blueSoft:#E3EEFF; --sun:#FFCF33; --night:#1F3B95; --red:#F0443A; --online:#34C759;
+  --success:#2F9E44; --successSoft:#E6F6EA; --danger:#D92D20; --dangerSoft:#FDECEA; --warnSoft:#FEF3E2;
+  --shadow:0 6px 24px rgba(17,17,26,.07),0 1px 3px rgba(17,17,26,.05);
+  --robot:radial-gradient(circle at 35% 30%,#9ED8FF 0%,#3D8BF7 55%,#1E4FD6 100%);
+  --sunGrad:linear-gradient(180deg,#FFE27A 0%,#FFC21A 100%);
+  --moodGrad:linear-gradient(180deg,#FFFFFF 40%,#FCEBFA 100%);
+  --chatGrad:linear-gradient(120deg,#EAF2FF 0%,#F6F0FF 60%,#FFEFF3 100%);
+  --summary:linear-gradient(120deg,#B9B4F2 0%,#E9BEDD 55%,#FBC4C4 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;cursor:none}
+body{font-family:"Noto Sans Thai","Noto Sans Thai UI","Noto Sans","IBM Plex Sans Thai",system-ui,sans-serif,"Noto Color Emoji";color:var(--text)}
+button{font:inherit;color:inherit;border:0;background:none;cursor:none}
+input{font:inherit;user-select:text}
+#stage{position:absolute;left:0;top:0;width:800px;height:480px;transform-origin:0 0;background:var(--bg);overflow:hidden}
+.hidden{display:none!important}
+.emoji{font-family:"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif}
+
+/* ---------- nav rail (the phone's floating tab bar, turned sideways) ---------- */
+#rail{position:absolute;left:14px;top:14px;bottom:14px;width:68px;display:flex;flex-direction:column;gap:10px}
+.homeBtn{width:68px;height:68px;border-radius:50%;background:var(--card);box-shadow:var(--shadow);display:grid;place-items:center;color:var(--text)}
+.homeBtn.on{background:var(--red);color:#fff}
+.tabs{flex:1;background:rgba(255,255,255,.96);border-radius:34px;box-shadow:var(--shadow);display:flex;flex-direction:column;justify-content:space-evenly;align-items:center;padding:8px 0}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--text);width:64px;padding:6px 0;border-radius:18px}
+.tab.on{color:var(--red)}
+.tab.on .ti{background:#FFE7E5;border-radius:12px}
+.ti{width:40px;height:30px;display:grid;place-items:center}
+
+/* ---------- pages ---------- */
+.page{position:absolute;left:96px;top:0;right:0;bottom:0;padding:16px 18px 16px 8px}
+.top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.hello{font-size:15px;color:var(--text);font-weight:500}
+.name{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.15}
+.clock{text-align:right}
+.clock b{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.15;display:block}
+.clock span{font-size:13px;color:var(--muted)}
+.statusbar{display:flex;gap:8px;justify-content:flex-end;align-items:center;font-size:12px;color:var(--muted);margin-top:2px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--online);display:inline-block}
+.dot.off{background:var(--red)}
+.card{background:var(--card);border-radius:24px;box-shadow:var(--shadow);padding:16px 18px}
+.h2{font-size:19px;font-weight:800;letter-spacing:-.2px}
+.sub{font-size:13px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:1.12fr 1fr;gap:14px;height:calc(100% - 78px)}
+.col{display:flex;flex-direction:column;gap:14px;min-height:0}
+
+/* next dose */
+.next{display:flex;align-items:center;gap:12px}
+.nextLabel{font-size:12px;font-weight:700;line-height:1.2;width:30px}
+.capsule{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:46px;padding:9px 0;border-radius:23px;background:var(--sunGrad);color:#5B4300;font-weight:800;font-size:12px}
+.capsule.night{background:var(--night);color:#fff}
+.capsule.h{flex-direction:row;width:auto;padding:5px 10px;gap:5px}
+.pill{width:38px;height:38px;border-radius:50%;background:var(--blue);display:grid;place-items:center;color:#fff;flex:none}
+.medName{font-size:19px;font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.medSub{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.late{color:var(--red);font-size:13px;font-weight:600}
+.btnTake{display:flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-weight:800;font-size:15px;padding:11px 16px;border-radius:999px;box-shadow:0 6px 16px rgba(240,68,58,.3);flex:none}
+.btnTake:active{transform:scale(.97)}
+.btnGhost{background:var(--fill);color:var(--text);font-weight:700;font-size:15px;padding:11px 18px;border-radius:999px}
+.done{display:flex;align-items:center;gap:12px;font-weight:700}
+
+/* mood */
+.mood{background:var(--moodGrad);flex:1;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.emojis{display:flex;justify-content:space-between}
+.emo{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-size:30px;transition:transform .15s}
+.emo.on{background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.12);transform:scale(1.12)}
+.emo:active{transform:scale(.92)}
+.moodNote{font-size:13px;color:var(--muted);text-align:center}
+
+/* pebbi card */
+.pebbi{background:var(--chatGrad);flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;position:relative}
+.orb{border-radius:50%;background:var(--robot);box-shadow:0 10px 30px rgba(61,139,247,.35);display:flex;align-items:center;justify-content:center;gap:16%;transition:transform .12s}
+.eye{width:12%;height:20%;border-radius:999px;background:#fff}
+.eye.zz{height:7%;background:none;border:3px solid #fff;border-top:0;border-radius:0 0 999px 999px;width:16%}
+.mic{width:66px;height:66px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;box-shadow:0 8px 20px rgba(240,68,58,.35)}
+.mic:active{transform:scale(.95)}
+.sumRow{display:flex;gap:0;width:100%;background:rgba(255,255,255,.75);border-radius:16px;padding:8px 0}
+.sumRow div{flex:1;font-size:12px;color:var(--muted)}
+.sumRow b{display:block;font-size:16px;color:var(--text)}
+.sumRow div+div{border-left:1px solid var(--line)}
+
+/* meds page */
+.list{display:flex;flex-direction:column;gap:10px;overflow-y:auto;height:calc(100% - 64px);padding:2px 4px 12px 2px;scrollbar-width:none}
+.list::-webkit-scrollbar{display:none}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.row .grow{flex:1;min-width:0}
+.chip{font-size:13px;font-weight:700;padding:7px 12px;border-radius:999px;flex:none}
+.chip.ok{background:var(--successSoft);color:var(--success)}
+.chip.miss{background:var(--dangerSoft);color:var(--danger)}
+.chip.wait{background:var(--fill);color:var(--muted)}
+.empty{height:calc(100% - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);text-align:center}
+
+/* talk page */
+.talk{display:grid;grid-template-columns:250px 1fr;gap:14px;height:100%}
+.talkL{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+.ring{position:relative;display:grid;place-items:center;width:200px;height:200px}
+.ring::before,.ring::after{content:"";position:absolute;inset:18px;border-radius:50%;border:3px solid rgba(61,139,247,.25);opacity:0}
+.ring.listening::before{animation:pulse 1.6s ease-out infinite}
+.ring.listening::after{animation:pulse 1.6s ease-out .8s infinite}
+@keyframes pulse{0%{transform:scale(.8);opacity:.9}100%{transform:scale(1.25);opacity:0}}
+.ring.thinking .orb{animation:bob 1.2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px)}}
+.state{font-size:18px;font-weight:800}
+.chat{display:flex;flex-direction:column;padding:12px;gap:8px;min-height:0}
+.log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;scrollbar-width:none}
+.log::-webkit-scrollbar{display:none}
+.b{max-width:82%;padding:9px 13px;border-radius:18px;font-size:15px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.b.u{align-self:flex-end;background:var(--text);color:#fff;border-bottom-right-radius:6px}
+.b.p{align-self:flex-start;background:var(--fill);border-bottom-left-radius:6px}
+.crisis{background:var(--dangerSoft);border-radius:16px;padding:10px 12px;font-size:13px;color:var(--danger)}
+.crisis b{font-size:14px}
+.crisis .nums{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.crisis .nums span{background:#fff;border-radius:999px;padding:4px 10px;font-weight:700;color:var(--text)}
+.inputRow{display:flex;gap:8px;align-items:center;background:var(--fill);border-radius:999px;padding:5px 5px 5px 16px}
+.inputRow input{flex:1;border:0;background:none;outline:none;font-size:15px;min-width:0}
+.send{width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;flex:none}
+.btnEnd{display:flex;gap:8px;align-items:center;background:var(--card);box-shadow:var(--shadow);font-weight:800;font-size:16px;padding:12px 20px;border-radius:999px;color:var(--red)}
+.hint{font-size:13px;color:var(--muted);max-width:220px}
+
+/* device page */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.tile{padding:12px 14px}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font-size:18px;font-weight:800;margin-top:2px}
+.kv{display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:0}
+.kv span:first-child{color:var(--muted)}
+
+/* gates: boot / offline / pairing */
+.gate{position:absolute;inset:0;background:linear-gradient(180deg,#FFF 70%,#E9E9EE 110%);display:flex;align-items:center;justify-content:center}
+.logo{display:flex;align-items:center;gap:10px}
+.logo i{width:42px;height:42px;border-radius:12px;background:var(--text);color:#fff;font-style:normal;font-weight:800;font-size:30px;display:grid;place-items:center;line-height:1;padding-bottom:5px}
+.logo b{font-size:32px;font-weight:700;letter-spacing:-.6px}
+.spin{width:28px;height:28px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--text);animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.pairWrap{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center;width:100%;padding:0 44px}
+.steps{display:flex;flex-direction:column;gap:12px;margin-top:20px}
+.step{display:flex;gap:12px;align-items:flex-start;font-size:15px}
+.step i{flex:none;width:26px;height:26px;border-radius:50%;background:var(--text);color:#fff;font-style:normal;font-size:13px;font-weight:800;display:grid;place-items:center}
+.codeCard{text-align:center;padding:26px 18px}
+.codeCard .orb{margin:0 auto}
+.digits{display:flex;gap:8px;justify-content:center;margin:16px 0 12px}
+.digits span{width:50px;height:64px;border-radius:14px;background:var(--fill);display:grid;place-items:center;font-size:36px;font-weight:800;font-family:"Noto Sans",system-ui,sans-serif}
+.digits .gap{width:10px;background:none}
+
+/* first-time setup (Figma "Desktop - 1" welcome, "Desktop - 2" setup) */
+.welcome{position:absolute;inset:0;overflow:hidden;background:#C2B49C}
+.welcome .bg{position:absolute;inset:-60px;filter:blur(10px);background:
+  radial-gradient(42% 9% at 48% 52%,rgba(28,26,26,.95) 0%,rgba(28,26,26,.7) 55%,rgba(60,54,48,0) 100%),
+  radial-gradient(62% 12% at 50% 51%,rgba(52,47,43,.85) 0%,rgba(80,72,64,.35) 60%,rgba(120,108,92,0) 100%),
+  radial-gradient(28% 10% at 25% 53%,rgba(70,64,58,.6) 0%,rgba(70,64,58,0) 100%),
+  radial-gradient(28% 10% at 78% 52%,rgba(70,64,58,.55) 0%,rgba(70,64,58,0) 100%),
+  radial-gradient(70% 45% at 72% 108%,#F4DFB9 0%,rgba(244,223,185,0) 70%),
+  radial-gradient(60% 40% at 15% 100%,#A99272 0%,rgba(169,146,114,0) 70%),
+  linear-gradient(180deg,#86A9C6 0%,#A9BCC8 26%,#C9C2B2 44%,#BBA88C 62%,#B59D7D 78%,#D8C29F 100%)}
+.welcome .photo{position:absolute;inset:0;background:url(/static/bg-welcome.jpg) center/cover no-repeat}
+.wlogo{position:absolute;left:0;right:0;top:66px;display:flex;justify-content:center;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:19px;font-family:"Noto Sans",system-ui,sans-serif}
+.wlogo img{width:38px;height:38px;border-radius:3px}
+.slogo{position:absolute;left:62px;top:56px;display:flex;align-items:center;gap:8px;color:#000;font-weight:700;font-size:19px;font-family:"Noto Sans",system-ui,sans-serif}
+.slogo img{width:38px;height:38px;border-radius:3px}
+.wtitle{position:absolute;left:0;right:0;top:214px;text-align:center;color:#fff;font-size:35px;font-weight:400;letter-spacing:-1.2px;font-family:"Noto Sans",system-ui,sans-serif;text-shadow:0 2px 18px rgba(0,0,0,.18)}
+.wbtn{position:absolute;left:50%;top:368px;transform:translateX(-50%);width:214px;height:44px;border-radius:999px;background:#fff;color:#111;font-size:15px;font-weight:500;font-family:"Noto Sans",system-ui,sans-serif;box-shadow:0 4px 18px rgba(0,0,0,.08)}
+.wbtn:active{transform:translateX(-50%) scale(.97)}
+.setup{position:absolute;inset:0;background:#fff;overflow:hidden}
+.stitle{position:absolute;left:84px;top:212px;font-size:31px;line-height:1.38;font-weight:400;letter-spacing:-.8px;color:#000;font-family:"Noto Sans",system-ui,sans-serif}
+.spair{position:absolute;left:86px;top:322px;width:320px}
+.spair .lbl{font-size:13px;color:var(--muted)}
+.spair .digits{justify-content:flex-start;margin:6px 0 8px;gap:6px}
+.spair .digits span{width:38px;height:48px;font-size:26px;border-radius:11px}
+.spair .digits .gap{width:6px}
+.spair .note{font-size:12px;color:var(--muted);line-height:1.5}
+.srobot{position:absolute;left:398px;top:148px;height:238px}
+.phone{position:absolute;left:556px;top:134px;width:120px;height:250px;border-radius:24px;padding:4px;
+  background:linear-gradient(145deg,#5A5D62 0%,#1E1F22 40%,#3A3C40 100%);box-shadow:0 18px 40px rgba(0,0,0,.18)}
+.phone .scr{position:relative;width:100%;height:100%;border-radius:20px;overflow:hidden;background:linear-gradient(180deg,#EEF4FA 0%,#C7DAEA 55%,#A9C4DC 100%)}
+.phone .island{position:absolute;top:7px;left:50%;transform:translateX(-50%);width:36px;height:11px;border-radius:7px;background:#050505;z-index:2}
+.phone .w{position:absolute;background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(236,243,250,.85));box-shadow:0 4px 10px rgba(80,110,140,.18),inset 0 1px 0 #fff}
+.phone .w1{left:-8px;top:26px;width:78px;height:58px;border-radius:0 24px 24px 0}
+.phone .w2{right:-8px;top:66px;width:66px;height:66px;border-radius:24px 0 0 24px}
+.phone .w3{left:-8px;top:116px;width:82px;height:64px;border-radius:0 24px 24px 0}
+.phone .w4{right:-8px;top:170px;width:62px;height:72px;border-radius:24px 0 0 24px}
+
+/* medicine pop-up */
+.overlay{position:absolute;inset:0;background:rgba(10,10,14,.42);display:flex;align-items:center;justify-content:center;animation:fade .2s}
+@keyframes fade{from{opacity:0}}
+.alert{width:520px;padding:24px 26px;text-align:center;border-radius:28px;animation:up .25s ease-out}
+@keyframes up{from{transform:translateY(16px);opacity:.4}}
+.alert .medName{font-size:30px;white-space:normal}
+.alertTop{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:10px}
+.tray{display:inline-flex;align-items:center;gap:6px;background:var(--blueSoft);color:var(--blue);font-weight:700;font-size:13px;padding:6px 12px;border-radius:999px;margin-top:10px}
+.alertBtns{display:flex;gap:10px;justify-content:center;margin-top:18px}
+.alertBtns .btnTake{font-size:18px;padding:14px 28px}
+
+/* sleep screen */
+.sleep{position:absolute;inset:0;background:#07070A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;animation:fade .6s}
+.sleep .big{font-size:96px;font-weight:300;letter-spacing:-2px;font-family:"Noto Sans",system-ui,sans-serif;line-height:1}
+.sleep .d{font-size:18px;color:#9A9AA2}
+
+/* toast + caption */
+.toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600;box-shadow:var(--shadow);animation:up .2s}
+.caption{position:absolute;left:110px;right:24px;bottom:18px;text-align:center}
+.caption span{display:inline-block;background:rgba(11,11,15,.86);color:#fff;padding:9px 16px;border-radius:16px;font-size:15px;max-width:100%}
+</style>
+</head>
+<body>
+<div id="stage">
+  <!-- main app -->
+  <div id="app" class="hidden">
+    <nav id="rail">
+      <button class="homeBtn" data-go="home" aria-label="หน้าแรก"></button>
+      <div class="tabs">
+        <button class="tab" data-go="meds"><span class="ti"></span>ยา</button>
+        <button class="tab" data-go="talk"><span class="ti"></span>Pebbi</button>
+        <button class="tab" data-go="device"><span class="ti"></span>pebble</button>
+      </div>
+    </nav>
+
+    <section id="home" class="page"></section>
+    <section id="meds" class="page hidden"></section>
+    <section id="talk" class="page hidden">
+      <div class="talk">
+        <div class="talkL" id="talkL"></div>
+        <div class="card chat">
+          <div id="crisis"></div>
+          <div class="log" id="log"></div>
+          <form class="inputRow" id="form" autocomplete="off">
+            <input id="msg" placeholder="พิมพ์คุยกับ Pebbi ก็ได้นะ…" maxlength="2000" enterkeyhint="send">
+            <button class="send" type="submit" id="sendBtn" aria-label="ส่ง"></button>
+          </form>
+        </div>
+      </div>
+    </section>
+    <section id="device" class="page hidden"></section>
+    <div id="caption" class="caption hidden"></div>
+  </div>
+
+  <div id="gate" class="gate"></div>
+  <div id="overlay" class="hidden"></div>
+  <div id="sleep" class="sleep hidden"></div>
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- icons (24px line icons)
+const P = {
+  home:'<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  pill:'<path d="M10.5 3.5a5 5 0 0 1 7 7l-7 7a5 5 0 0 1-7-7z"/><path d="m7 7 7 7"/>',
+  spark:'<path d="M12 2c.6 4.7 2.6 7.4 8 8.2v.6c-5.4.8-7.4 3.5-8 8.2h-.6c-.6-4.7-2.6-7.4-8-8.2v-.6c5.4-.8 7.4-3.5 8-8.2z" fill="currentColor" stroke="none"/>',
+  robot:'<rect x="4" y="8" width="16" height="11" rx="4"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1.2"/><circle cx="9" cy="13.5" r="1.2" fill="currentColor"/><circle cx="15" cy="13.5" r="1.2" fill="currentColor"/>',
+  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  stop:'<rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor" stroke="none"/>',
+  send:'<path d="M4 12 20 4l-6 16-3-7z" fill="currentColor" stroke-linejoin="round"/>',
+  check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon:'<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor" stroke="none"/>',
+  wifi:'<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1.3" fill="currentColor"/>',
+  bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" stroke="none"/>',
+  tray:'<path d="M3 13h5l1.5 3h5L16 13h5M5 5h14l2 8v6H3v-6z"/>',
+};
+const ic = (n, s = 24, w = 2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = (id) => document.getElementById(id);
+const set = (el, html) => { if (el._h !== html) { el.innerHTML = html; el._h = html; } };
+
+const MOODS = [[1,'😭','แย่มาก'],[2,'🥹','เศร้า'],[3,'😢','ไม่ค่อยดี'],[4,'😌','เฉย ๆ'],[5,'☺️','สงบ'],[6,'😊','ดี'],[7,'🥰','ดีมาก']];
+const moodOf = (s) => MOODS.find((m) => m[0] === s);
+
+// ---------------------------------------------------------------- fit the 800x480 design to any screen
+function fit() {
+  const k = Math.min(innerWidth / 800, innerHeight / 480);
+  const st = $('stage');
+  st.style.transform = `scale(${k})`;
+  st.style.left = (innerWidth - 800 * k) / 2 + 'px';
+  st.style.top = (innerHeight - 480 * k) / 2 + 'px';
+}
+addEventListener('resize', fit); fit();
+
+// ---------------------------------------------------------------- connection
+let setupStep = 'welcome';
+let S = null, ws = null, view = 'home', awakeUntil = 0, lastMsgCount = 0, wasTalking = false;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = (e) => { S = JSON.parse(e.data); render(); };
+  ws.onclose = () => { setTimeout(connect, 1000); };
+}
+const send = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+connect();
+
+// ---------------------------------------------------------------- navigation + taps
+document.addEventListener('pointerdown', () => {
+  awakeUntil = Date.now() + 60000;
+  send({a:'touch'});
+  if (!$('sleep').classList.contains('hidden')) { $('sleep').classList.add('hidden'); }
+}, true);
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-go],[data-a]');
+  if (!t) return;
+  if (t.dataset.go) { go(t.dataset.go); return; }
+  const a = t.dataset.a;
+  if (a === 'continue') { setupStep = 'setup'; render(); }
+  else if (a === 'talk') { go('talk'); send({a:'talk'}); }
+  else if (a === 'stop') send({a:'stop'});
+  else if (a === 'take') send({a:'take', id:t.dataset.id});
+  else if (a === 'later') send({a:'later'});
+  else if (a === 'mood') send({a:'mood', score:Number(t.dataset.s)});
+  else if (a === 'wave') send({a:'wave'});
+  else if (a === 'box') send({a:'box'});
+});
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('msg').value.trim();
+  if (!v) return;
+  send({a:'send', text:v});
+  $('msg').value = '';
+});
+function go(v) {
+  view = v;
+  if (v === 'meds') send({a:'refresh'});
+  render();
+}
+
+// ---------------------------------------------------------------- pieces
+function capsule(time, horizontal) {
+  const h = Number(time.slice(0, 2));
+  const night = h >= 18 || h < 5;
+  return `<div class="capsule ${night ? 'night' : ''} ${horizontal ? 'h' : ''}">${ic(night ? 'moon' : 'sun', horizontal ? 14 : 16)}${esc(time)}</div>`;
+}
+function orb(size, sleepy) {
+  const e = `<i class="eye ${sleepy ? 'zz' : ''}"></i>`;
+  return `<div class="orb" style="width:${size}px;height:${size}px">${e}${e}</div>`;
+}
+const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+function untilText(time) {
+  let d = minutes(time) - minutes(S.clock);
+  if (d <= 0) return 'ถึงเวลาแล้ว';
+  const h = Math.floor(d / 60), m = d % 60;
+  return 'อีก ' + (h ? `${h} ชม. ` : '') + (m ? `${m} นาที` : '');
+}
+function medLine(d) { return [d.dosage, d.instructions].filter(Boolean).join(' · '); }
+
+// ---------------------------------------------------------------- pages
+function homeHTML() {
+  const doses = S.doses;
+  const taken = doses.filter((d) => d.status === 'taken').length;
+  const next = doses.find((d) => d.status === 'pending');
+  let nextCard;
+  if (next) {
+    const right = next.due
+      ? `<button class="btnTake" data-a="take" data-id="${next.id}">${ic('check', 18, 2.6)}กินแล้ว</button>`
+      : `<span class="chip wait">${untilText(next.time)}</span>`;
+    nextCard = `<div class="card next">
+      <div class="nextLabel">ยา<br>ถัดไป</div>${capsule(next.time)}
+      <div class="pill">${ic('pill', 20)}</div>
+      <div style="flex:1;min-width:0"><div class="medName">${esc(next.name)}</div>
+        <div class="${next.due ? 'late' : 'medSub'}">${next.due ? 'ถึงเวลาแล้ว' : esc(medLine(next) || ' ')}</div></div>
+      ${right}</div>`;
+  } else {
+    const missed = doses.filter((d) => d.status === 'missed').length;
+    const all = doses.length && taken === doses.length;
+    const title = !doses.length ? 'วันนี้ไม่มียาที่ต้องกิน' : all ? 'วันนี้กินยาครบแล้ว เก่งมาก' : 'ไม่มียาที่รออยู่ตอนนี้';
+    const sub = !doses.length ? 'เพิ่มยาได้ในแอป Pebble บนมือถือ'
+      : `กินแล้ว ${taken}/${doses.length}` + (missed ? ` · <span class="late">เลยเวลา ${missed}</span> ดูในหน้ายา` : '');
+    nextCard = `<div class="card done" ${missed ? 'data-go="meds"' : ''}><div class="pill" style="background:${all || !doses.length ? 'var(--success)' : 'var(--blue)'}">${ic(all || !doses.length ? 'check' : 'pill', 20, 2.6)}</div>
+      <div><div style="font-size:17px">${title}</div><div class="sub">${sub}</div></div></div>`;
+  }
+  const m = moodOf(S.moodToday);
+  const emo = MOODS.map(([s, e]) => `<button class="emo emoji ${S.moodToday === s ? 'on' : ''}" data-a="mood" data-s="${s}">${e}</button>`).join('');
+  const sleepy = S.mood === 'sleepy';
+  return `
+  <div class="top">
+    <div><div class="hello">${esc(S.greeting)} <span class="emoji">${S.hour >= 18 || S.hour < 5 ? '🌙' : '🌤️'}</span></div>
+      <div class="name">${esc(S.owner || 'สวัสดี')}</div></div>
+    <div class="clock"><b>${S.clock}</b><span>${esc(S.date)}</span>${statusBar()}</div>
+  </div>
+  <div class="grid">
+    <div class="col">
+      ${nextCard}
+      <div class="card mood">
+        <div><div class="h2">เช็กอินความรู้สึก</div><div class="sub">ตอนนี้รู้สึกยังไงบ้าง</div></div>
+        <div class="emojis">${emo}</div>
+        <div class="moodNote">${m ? `บันทึกแล้ว: ${m[2]}${S.moodToday <= 2 ? ' · อยากเล่าให้ Pebbi ฟังไหม?' : ''}` : 'แตะหน้าที่ตรงกับใจที่สุด'}</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card pebbi">
+        ${orb(92, sleepy)}
+        <div class="h2">คุยกับ Pebbi</div>
+        <div class="sub" style="margin-top:-4px">${S.status.voice ? 'แตะไมค์ แล้วพูดได้เลย' : 'แตะเพื่อพิมพ์คุยกัน'}</div>
+        <button class="mic" data-a="talk" aria-label="คุยกับ Pebbi">${ic('mic', 30)}</button>
+        <div class="sumRow">
+          <div><b>${taken}/${doses.length}</b>กินยาแล้ว</div>
+          <div><b class="emoji">${m ? m[1] : '–'}</b>อารมณ์วันนี้</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function statusBar() {
+  const s = S.status;
+  return `<div class="statusbar"><span class="dot ${s.online ? '' : 'off'}"></span>${s.online ? 'ออนไลน์' : 'ออฟไลน์'}
+    ${s.battery != null ? `<span>${s.charging ? ic('bolt', 12) : ''}${s.battery}%</span>` : ''}</div>`;
+}
+
+function medsHTML() {
+  const doses = S.doses;
+  const head = `<div class="top"><div><div class="name">ยาวันนี้</div><div class="sub">${esc(S.date)} · กินแล้ว ${doses.filter((d) => d.status === 'taken').length}/${doses.length}</div></div>
+    <div class="clock"><b>${S.clock}</b>${statusBar()}</div></div>`;
+  if (!doses.length) return head + `<div class="empty"><div class="pill" style="width:56px;height:56px">${ic('pill', 28)}</div>
+    <div class="h2" style="color:var(--text)">วันนี้ไม่มียา</div><div>เพิ่มยาและเวลาได้ในแอป Pebble บนมือถือ</div></div>`;
+  const rows = doses.map((d) => {
+    let right;
+    if (d.status === 'taken') right = `<span class="chip ok">✓ กินแล้ว</span>`;
+    else if (d.status === 'skipped') right = `<span class="chip wait">ข้าม</span>`;
+    else if (d.status === 'missed') right = `<button class="btnGhost" data-a="take" data-id="${d.id}">บันทึกว่ากินแล้ว</button>`;
+    else if (d.due) right = `<button class="btnTake" data-a="take" data-id="${d.id}">${ic('check', 18, 2.6)}กินแล้ว</button>`;
+    else right = `<span class="chip wait">${untilText(d.time)}</span>`;
+    return `<div class="card row">${capsule(d.time)}<div class="pill">${ic('pill', 20)}</div>
+      <div class="grow"><div class="medName" style="font-size:17px">${esc(d.name)}</div>
+      <div class="medSub">${esc(medLine(d) || (d.slot ? `ช่องจ่ายยาที่ ${d.slot}` : ''))}${d.status === 'missed' ? ' · <span class="late">เลยเวลาแล้ว</span>' : ''}</div></div>${right}</div>`;
+  }).join('');
+  return head + `<div class="list">${rows}</div>`;
+}
+
+const BOX_TEXT = {closed:'ปิดอยู่', opening:'กำลังเปิด…', open:'เปิดอยู่', closing:'กำลังปิด…'};
+const STATE_TEXT = {listening:'ฟังอยู่นะ…', thinking:'กำลังคิด…', speaking:'Pebbi กำลังพูด', waiting:'พิมพ์ได้เลย', idle:'พร้อมคุยแล้ว'};
+function talkLeftHTML() {
+  const t = S.talk;
+  const st = t.state;
+  const btn = t.active
+    ? `<button class="btnEnd" data-a="stop">${ic('stop', 20)}จบการคุย</button>`
+    : `<button class="mic" data-a="talk" aria-label="เริ่มคุย">${ic('mic', 30)}</button>`;
+  const hint = t.active
+    ? (st === 'listening' ? 'พูดได้เลย เราฟังอยู่' : st === 'waiting' ? 'พิมพ์ในช่องด้านขวา' : '')
+    : (S.status.voice ? 'แตะไมค์เพื่อเริ่มคุย หรือพิมพ์ด้านขวาก็ได้' : 'พิมพ์ในช่องด้านขวาเพื่อคุยกับ Pebbi');
+  return `<div class="ring ${st}" id="ring">${orb(130, false)}</div>
+    <div class="state">${STATE_TEXT[st] || ''}</div>
+    ${btn}<div class="hint">${hint}</div>`;
+}
+function logHTML() {
+  const msgs = S.talk.messages;
+  if (!msgs.length) return `<div class="empty" style="height:100%"><div class="emoji" style="font-size:34px">💬</div>
+    <div>Pebbi อยู่ตรงนี้เสมอ<br>อยากเล่าอะไรก็เล่าได้เลยนะ</div></div>`;
+  return msgs.map((m) => `<div class="b ${m.role === 'user' ? 'u' : 'p'}">${esc(m.text)}</div>`).join('');
+}
+function crisisHTML() {
+  const c = S.talk.crisis;
+  if (!c) return '';
+  return `<div class="crisis"><b>เราเป็นห่วงนะ ถ้ารู้สึกไม่ปลอดภัย โทรหาคนเหล่านี้ได้เลย</b>
+    <div class="nums">${c.map((x) => `<span>${esc(x.label)} ${esc(x.phone)}</span>`).join('')}</div></div>`;
+}
+
+function deviceHTML() {
+  const s = S.status;
+  const tile = (k, v) => `<div class="card tile"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const kv = (k, v) => `<div class="kv"><span>${k}</span><span>${esc(v)}</span></div>`;
+  return `<div class="top"><div style="display:flex;align-items:center;gap:14px">${orb(56, false)}
+      <div><div class="name" style="font-size:26px">pebble(a)</div><div class="sub">${S.owner ? `จับคู่กับ ${esc(S.owner)} แล้ว` : 'ยังไม่ได้จับคู่'}</div></div></div>
+      <div class="clock"><b>${S.clock}</b>${statusBar()}</div></div>
+    <div class="tiles">
+      ${tile('แบตเตอรี่', s.battery != null ? `${s.battery}%${s.charging ? ' ⚡' : ''}` : '–')}
+      ${tile('อินเทอร์เน็ต', s.online ? '<span style="color:var(--success)">ออนไลน์</span>' : '<span style="color:var(--red)">ออฟไลน์</span>')}
+      ${tile('บอร์ด ESP32', s.esp32 ? '<span style="color:var(--success)">เชื่อมต่อแล้ว</span>' : '<span style="color:var(--red)">ไม่ได้ต่อ</span>')}
+      ${tile('กล่องยา', BOX_TEXT[s.box] || '–')}
+    </div>
+    <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:12px">
+      <div class="card" style="padding:4px 18px">
+        ${kv('Serial', s.serial)}${kv('IP', s.ip)}${kv('เวอร์ชัน', s.version + (s.espFw ? ` · ${s.espFw}` : ''))}
+        ${kv('ระยะข้างหน้า', s.dist != null && s.dist < 9000 ? `${s.dist} มม.` : 'โล่ง')}${kv('กล้อง', !s.camera ? 'ปิดอยู่' : s.person ? 'เห็นคุณอยู่' : 'พร้อม')}
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;justify-content:center">
+        <div class="h2" style="font-size:16px">สั่งหุ่น</div>
+        <button class="btnGhost" data-a="wave" ${s.esp32 ? '' : 'disabled style="opacity:.4"'}>👋 โบกมือ</button>
+        <button class="btnGhost" data-a="box" ${s.esp32 ? '' : 'disabled style="opacity:.4"'}>${s.box === 'open' || s.box === 'opening' ? 'ปิดกล่องยา' : 'เปิดกล่องยา'}</button>
+      </div>
+    </div>
+    <div class="sub" style="margin-top:10px;text-align:center">ตั้งชื่อหุ่น เสียง และช่วงเวลาเงียบ ได้ในแอป Pebble บนมือถือ</div>`;
+}
+
+function gateHTML() {
+  if (S.mode === 'pairing') {
+    if (setupStep === 'welcome') {
+      return `<div class="welcome"><div class="bg"></div><div class="photo"></div>
+        <div class="wlogo"><img src="/static/logo-mark.png" alt=""><span>· pebble™</span></div>
+        <div class="wtitle">Welcome to pebble(a)</div>
+        <button class="wbtn" data-a="continue">Continue</button></div>`;
+    }
+    const p = S.pair || {};
+    const code = p.code || '';
+    const digits = code
+      ? `<div class="digits">${[...code].map((c, i) => (i === 3 ? '<span class="gap"></span>' : '') + `<span>${c}</span>`).join('')}</div>`
+      : `<div style="margin:12px 0 10px"><div class="spin"></div></div>`;
+    const left = p.expiresIn != null ? ` · หมดอายุใน ${Math.floor(p.expiresIn / 60)}:${String(p.expiresIn % 60).padStart(2, '0')}` : '';
+    return `<div class="setup">
+      <div class="slogo"><img src="/static/logo-mark.png" alt=""><span>· pebble™</span></div>
+      <div class="stitle">Setup<br>qwerti pebble(a)</div>
+      <div class="spair"><div class="lbl">รหัสจับคู่หุ่น</div>${digits}
+        <div class="note">เปิดแอป Pebble แล้วกด “เพิ่มหุ่น”${left}<br>แอปจะเจอหุ่นทาง Bluetooth หรือพิมพ์รหัสนี้ก็ได้</div></div>
+      <img class="srobot" src="/static/robot.png" alt="">
+      <div class="phone"><div class="scr"><div class="island"></div><div class="w w1"></div><div class="w w2"></div><div class="w w3"></div><div class="w w4"></div></div></div>
+    </div>`;
+  }
+  if (S.mode === 'offline') {
+    return `<div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px">
+      <div class="logo"><i>a</i><b>pebble</b></div>
+      <div style="color:var(--red);margin-top:10px">${ic('wifi', 44)}</div>
+      <div class="h2">ต่ออินเทอร์เน็ตไม่ได้</div>
+      <div class="sub">กำลังลองใหม่อัตโนมัติ · ตรวจ Wi-Fi ของหุ่น และเซิร์ฟเวอร์ Pebble</div>
+      <div class="spin" style="margin-top:6px"></div>
+      <div class="sub" style="margin-top:8px">IP ${esc(S.status.ip)} · ${esc(S.status.server)}</div></div>`;
+  }
+  return `<div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:22px">
+    <div class="logo"><i>a</i><b>pebble</b></div><div class="spin"></div><div class="sub">กำลังเปิดเครื่อง…</div></div>`;
+}
+
+function alertHTML() {
+  const d = S.pending;
+  return `<div class="overlay"><div class="card alert">
+    <div class="alertTop">${capsule(d.time, true)}<span class="late" style="font-size:15px">ถึงเวลากินยาแล้ว</span></div>
+    <div style="display:flex;justify-content:center;margin:8px 0"><div class="pill" style="width:58px;height:58px">${ic('pill', 30)}</div></div>
+    <div class="medName">${esc(d.name)}</div>
+    <div class="medSub" style="font-size:15px;white-space:normal">${esc(medLine(d))}</div>
+    ${d.dispensed ? `<div class="tray">${ic('tray', 16)}ยาอยู่ในกล่องแล้ว · หยิบยาแล้วแตะปิดกล่องได้เลย</div>` : ''}
+    <div class="alertBtns">
+      <button class="btnGhost" data-a="later">เดี๋ยวก่อน</button>
+      <button class="btnTake" data-a="take" data-id="${d.id}">${ic('check', 20, 2.8)}กินแล้ว</button>
+    </div></div></div>`;
+}
+
+// ---------------------------------------------------------------- render
+function render() {
+  if (!S) return;
+  const ready = S.mode === 'ready';
+  if (ready) setupStep = 'welcome';
+  $('gate').classList.toggle('hidden', ready);
+  $('app').classList.toggle('hidden', !ready);
+  if (!ready) { set($('gate'), gateHTML()); }
+
+  // a conversation that starts (button on the head, app "wake") opens the Pebbi page
+  if (S.talk.active && !wasTalking) view = 'talk';
+  wasTalking = S.talk.active;
+
+  if (ready) {
+    for (const v of ['home', 'meds', 'talk', 'device']) $(v).classList.toggle('hidden', v !== view);
+    document.querySelectorAll('[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === view));
+    set(document.querySelector('.homeBtn'), ic('home', 28));
+    document.querySelectorAll('.tab .ti').forEach((el, i) => set(el, ic(['pill', 'spark', 'robot'][i], 24)));
+    if (view === 'home') set($('home'), homeHTML());
+    if (view === 'meds') set($('meds'), medsHTML());
+    if (view === 'device') set($('device'), deviceHTML());
+    if (view === 'talk') {
+      set($('talkL'), talkLeftHTML());
+      set($('crisis'), crisisHTML());
+      set($('log'), logHTML());
+      set($('sendBtn'), ic('send', 18));
+      if (S.talk.messages.length !== lastMsgCount) { $('log').scrollTop = 1e6; lastMsgCount = S.talk.messages.length; }
+    }
+    // spoken words as a subtitle when the Pebbi page isn't open
+    const cap = view !== 'talk' && S.talk.caption ? `<span>${esc(S.talk.caption)}</span>` : '';
+    set($('caption'), cap);
+    $('caption').classList.toggle('hidden', !cap);
+  }
+
+  // orb follows the voice
+  const k = 1 + Math.min(S.level, 1) * 0.12;
+  document.querySelectorAll('#ring .orb, .pebbi .orb').forEach((o) => { o.style.transform = `scale(${k})`; });
+
+  // medicine pop-up
+  const showAlert = ready && !!S.pending;
+  $('overlay').classList.toggle('hidden', !showAlert);
+  set($('overlay'), showAlert ? alertHTML() : '');
+
+  // sleep screen (clock) when nobody is around
+  const sleep = ready && S.sleep && S.idleSeconds > 60 && Date.now() > awakeUntil && !showAlert && !S.talk.active;
+  $('sleep').classList.toggle('hidden', !sleep);
+  if (sleep) set($('sleep'), `<div class="big">${S.clock}</div><div class="d">${esc(S.date)}</div>
+    <div style="margin-top:26px;opacity:.85">${orb(54, true)}</div>`);
+
+  // toast
+  $('toast').classList.toggle('hidden', !S.toast);
+  set($('toast'), esc(S.toast || ''));
+}
+</script>
+</body>
+</html>

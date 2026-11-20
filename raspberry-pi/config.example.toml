@@ -1,0 +1,59 @@
+# pebble(a) — Raspberry Pi 5 config
+# Copy to /etc/pebble/config.toml (install.sh does this) and fill in the values.
+# Keep this file private: it holds the robot's secret.
+
+[server]
+# Backend base URL (no trailing slash). The ngrok / Cloudflare URL of the API.
+url = "https://colonist-alkalize-duo.ngrok-free.dev"
+
+[robot]
+# From `node --env-file=.env dist/scripts/provision-device.js` (apps/api).
+serial = "PBL-XXXXXXXX"
+secret = "paste-the-secret-here"
+model = "A3120B"
+color = "Space Black"
+
+[esp32]
+# USB serial port of the ESP32. "auto" picks the first /dev/ttyUSB* or /dev/ttyACM*.
+# "sim" = no ESP32 attached (prints the commands instead).
+port = "auto"
+baud = 115200
+
+[display]
+fullscreen = true
+width = 800
+height = 480
+fps = 30
+
+[voice]
+# Speech-to-text: "google" (free, needs internet) or "openai".
+stt = "google"
+# Text-to-speech: "gtts" (free, needs internet) or "openai".
+tts = "gtts"
+language = "th"
+openai_api_key = ""
+openai_tts_voice = "nova"
+# Microphone / speaker (names or numbers from `python -m sounddevice`). Empty = system default.
+input_device = ""
+output_device = ""
+# Talk turn ends after this much silence (seconds).
+silence_seconds = 1.2
+max_record_seconds = 15
+# Start talking at all? false = face + meds only.
+enabled = true
+
+[camera]
+enabled = true
+# Greet someone who shows up after being away this long (minutes).
+greet_after_minutes = 30
+
+[thingsboard]
+# Device access token from ThingsBoard (Devices -> your robot -> Copy access token). Empty = off.
+host = "demo.thingsboard.io"
+port = 1883
+token = ""
+
+[dispenser]
+# Remind again every N minutes while a dose waits, give up after M minutes.
+remind_every_minutes = 5
+give_up_after_minutes = 60

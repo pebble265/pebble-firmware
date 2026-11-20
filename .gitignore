@@ -1,3 +1,9 @@
+# secrets
+raspberry-pi/config.toml
+esp32/include/secrets.h
+# build / env
 .pio/
 .vscode/
-include/secrets.h
+.venv/
+__pycache__/
+*.pyc

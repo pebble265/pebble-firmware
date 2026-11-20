@@ -1,0 +1,22 @@
+[Unit]
+Description=pebble(a) robot brain
+After=network-online.target bluetooth.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+SupplementaryGroups=video render input audio dialout bluetooth
+WorkingDirectory=/opt/pebble
+Environment=PYTHONUNBUFFERED=1
+Environment=PEBBLE_CONFIG=/etc/pebble/config.toml
+# No desktop (Raspberry Pi OS Lite): robot face drawn straight to the screen.
+# With a desktop, install.sh uses the touch-screen app (autostart) instead.
+Environment=SDL_VIDEODRIVER=kmsdrm
+StateDirectory=pebble
+ExecStart=/opt/pebble/.venv/bin/python -m pebble --ui face
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

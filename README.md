@@ -1,62 +1,38 @@
-# pebble(a) · Robot firmware (ESP32)
+# pebble(a) · Robot firmware
 
-เฟิร์มแวร์ของหุ่น **pebble(a)** หุ่นเพื่อนคู่ใจสำหรับผู้ที่มีภาวะซึมเศร้า ทำงานคู่กับ
-แอป Pebble (repo: [`pebble265/pebble`](https://github.com/pebble265/pebble))
+ซอฟต์แวร์ในตัวหุ่น **pebble(a)** หุ่นเพื่อนคู่ใจสำหรับผู้ที่มีภาวะซึมเศร้า ทำงานคู่กับแอป Pebble
+(repo: [`pebble265/pebble`](https://github.com/pebble265/pebble))
 
-> สถานะ: **v1.0.0 — starter firmware** ครอบคลุมการเชื่อมต่อทั้งหมดกับระบบ (backend, แอป, ThingsBoard)
-> ส่วนฮาร์ดแวร์ (ขา GPIO, มอเตอร์, ช่องจ่ายยา) ปรับได้ที่ `include/config.h` ตามบอร์ดจริง
-
-## ทำอะไรได้บ้าง
-
-| ฟีเจอร์ | รายละเอียด |
-|---|---|
-| ล็อกอินกับ backend | `POST /robot/auth` ด้วย serial + secret ได้ device token (ต่ออายุเองทุก 50 นาที) |
-| จับคู่กับแอปผ่าน Bluetooth LE | ตอนยังไม่มีเจ้าของ: ขอรหัส 6 หลัก (`POST /robot/pairing-code`) แล้วประกาศ BLE service ตามโปรโตคอลเดียวกับแอป (`INFO`, `PAIR`) พอแอปจับคู่สำเร็จ ปิด BLE เอง |
-| Heartbeat | ทุก 1 นาที ส่งแบตเตอรี่ สถานะชาร์จ และเวอร์ชันเฟิร์มแวร์ (`POST /robot/heartbeat`) |
-| รับคำสั่งจากแอปแบบ realtime | Socket.IO `/realtime`: `wake` (ไฟกระพริบ + เสียง), `forward` / `backward` / `stop` (มอเตอร์ หยุดเองถ้าไม่ได้รับ stop ภายใน 10 วิ) |
-| เตือนกินยา | ได้รับ `dose:due` (หรือเช็กเองทุก 5 นาทีจาก `GET /robot/doses/today`) → จ่ายยา ไฟกระพริบ ส่งเสียงทุก 30 วิ จนกดปุ่ม → `POST /robot/doses/:id/take` |
-| ส่ง log เข้า ThingsBoard | MQTT ทุก 30 วิ: `battery`, `charging`, `paired`, `rssi`, `uptime`, `heap`, `realtime`, `doseWaiting` และเหตุการณ์ (`event`: boot, paired, cmd, dose_due, dose_taken) ดูได้ที่เว็บแอดมิน |
-
-## ฮาร์ดแวร์ (ค่าเริ่มต้นใน `include/config.h`)
-
-| ส่วน | ขา ESP32 |
-|---|---|
-| ปุ่มบนหัวหุ่น (ยืนยันกินยา) | GPIO 0 (active LOW) |
-| ไฟสถานะ | GPIO 2 |
-| Buzzer | GPIO 25 |
-| วัดแบต (ผ่านตัวแบ่งแรงดัน 1:2) | GPIO 34 |
-| สถานะชาร์จ | GPIO 35 |
-| มอเตอร์ (H-bridge) | GPIO 26, 27 |
-| ช่องจ่ายยา | GPIO 14 |
-
-## วิธีใช้
-
-1. ติดตั้ง [PlatformIO](https://platformio.org/) (VS Code extension หรือ `pip install platformio`)
-2. ลงทะเบียนหุ่นใน backend (ทำครั้งเดียวต่อหุ่นหนึ่งตัว) ใน repo แอป `apps/api`:
-   ```bash
-   npm run build && node --env-file=.env dist/scripts/provision-device.js
-   ```
-   จะได้ `PEBBLE_SERIAL` และ `PEBBLE_SECRET`
-3. คัดลอก `include/secrets.example.h` เป็น `include/secrets.h` แล้วใส่ Wi-Fi, URL ของ backend,
-   serial/secret และ Access token ของอุปกรณ์ใน ThingsBoard (`secrets.h` ไม่ถูกอัปขึ้น git)
-4. Build และ upload:
-   ```bash
-   pio run -t upload
-   pio device monitor      # ดู log ทาง Serial (115200)
-   ```
-5. เปิดแอป Pebble → ตั้งค่าครั้งแรก → "Finding your pebble" แอปจะเจอหุ่นผ่าน Bluetooth
-
-## โครงสร้าง
+หุ่นมีคอมพิวเตอร์ 2 ตัว:
 
 ```
-platformio.ini            บอร์ด ESP32 + ไลบรารี (ArduinoJson, PubSubClient, WebSockets)
-include/config.h          ขา GPIO, ค่าแบต, ช่วงเวลา
-include/secrets.example.h ตัวอย่างค่าลับ (คัดลอกเป็น secrets.h)
-src/main.cpp              เฟิร์มแวร์ทั้งหมด
+                    Wi-Fi                               USB serial (JSON ทีละบรรทัด)
+ backend Pebble  ◄────────►  Raspberry Pi 5  ◄──────────────────────────────►  ESP32
+ (API + Socket.IO)            "สมอง"                                          "ร่างกาย"
+ ThingsBoard     ◄── MQTT ──  · หน้าจอใบหน้า (ตา/อารมณ์)                       · มอเตอร์ล้อ 2 ข้าง
+ แอปมือถือ       ◄── BLE ───  · ไมค์ + ลำโพง คุยกับ Pebbi                      · servo จ่ายยา + หัว
+                              · กล้อง (รู้ว่ามีคนอยู่ ตามมอง)                  · ไฟ LED วงแหวน
+                              · ตารางยา จับคู่ heartbeat                        · ปุ่มบนหัว buzzer วัดแบต
 ```
 
-## หมายเหตุด้านความปลอดภัย
+| โฟลเดอร์ | ภาษา | ทำหน้าที่ |
+|---|---|---|
+| [`raspberry-pi/`](raspberry-pi/) | Python 3.11 | แอปหลักบน Raspberry Pi 5 ต่อ backend, หน้าจอ, เสียง, กล้อง, Bluetooth, ThingsBoard แล้วสั่ง ESP32 |
+| [`esp32/`](esp32/) | C++ (Arduino IDE, ESP32-S3) | MedBot ของทีม: คุมฮาร์ดแวร์ตามคำสั่งจาก Pi แล้วรายงานทัช / กล่องยา / แบตกลับ (มีเมนูทดสอบผ่าน Serial ด้วย) |
+| [`esp32/PROTOCOL.md`](esp32/PROTOCOL.md) | — | รูปแบบข้อความระหว่าง Pi กับ ESP32 |
 
-- ค่าลับทั้งหมดอยู่ใน `secrets.h` ซึ่ง git ไม่เก็บ
-- ตอนพัฒนาใช้ `setInsecure()` กับ HTTPS (เพราะ URL ของ ngrok เปลี่ยนได้) ก่อนใช้งานจริงควรฝัง root CA ของเซิร์ฟเวอร์
-- หุ่นไม่ได้เก็บหรือส่งชื่อยา ข้อความแชท หรือโน้ตของผู้ใช้
+## เริ่มต้นเร็ว
+
+1. ลงทะเบียนหุ่นใน backend (ครั้งเดียวต่อหุ่น) ใน repo แอป `apps/api`:
+   `npm run build && node --env-file=.env dist/scripts/provision-device.js 4` → ได้ serial + secret
+2. อัปโหลดโค้ด ESP32-S3 ด้วย Arduino IDE: ดู [`esp32/README.md`](esp32/README.md) แล้วต่อ ESP32 เข้า Pi ด้วยสาย USB
+3. ติดตั้งบน Pi: ดู [`raspberry-pi/README.md`](raspberry-pi/README.md)
+4. เปิดแอป Pebble → เพิ่มหุ่น → แอปเจอหุ่นทาง Bluetooth (หรือพิมพ์รหัส 6 หลักที่ขึ้นบนจอหุ่น)
+
+## ใช้งาน
+
+- **ถึงเวลายา:** หุ่นดันยาลงกล่อง เลื่อนกล่องออก จอขึ้นเตือนและพูดบอก → หยิบยาแล้ว**แตะเซ็นเซอร์ 1 ปิดกล่อง** = บันทึกว่ากินแล้ว (หรือแตะ "กินแล้ว" บนจอ)
+- **แตะเซ็นเซอร์ 2** หรือปุ่มไมค์บนจอ = คุยกับ Pebbi
+- **แอปมือถือ (แท็บ pebble → ควบคุมหุ่น):** เดินหน้า / ถอยหลัง / เลี้ยวซ้าย / เลี้ยวขวา (กดค้าง), โบกมือ, เปิด/ปิดกล่องยา
+
+> เวอร์ชันก่อนหน้า (v1, ESP32 ตัวเดียวต่อ Wi-Fi เอง) ยังอยู่ในประวัติ git
