@@ -39,9 +39,14 @@ def _split(line: str) -> list[str]:
     return out
 
 
+def _is_wrong_password(text: str) -> bool:
+    t = text.lower()
+    return "secrets were required" in t or "no secrets" in t or "(7)" in t and "secret" in t
+
+
 def _thai_error(text: str) -> str:
     t = text.lower()
-    if "secrets were required" in t or "psk" in t or "password" in t or "802-1x" in t or "no secrets" in t:
+    if _is_wrong_password(text) or "psk: property is invalid" in t:
         return "รหัสผ่าน Wi-Fi ไม่ถูกต้อง"
     if "no network with ssid" in t or "not found" in t:
         return "ไม่พบ Wi-Fi นี้แล้ว ลองค้นหาใหม่"
@@ -128,6 +133,7 @@ class Wifi:
                     "signal": signal,
                     "secure": f[3] not in ("", "--"),
                     "enterprise": "802.1X" in f[3],  # needs a username too: not supported on the screen
+                    "security": f[3],
                     "active": f[0].strip() == "*",
                     "known": ssid in known,
                 }
@@ -142,12 +148,44 @@ class Wifi:
         finally:
             self.scanning = False
 
+    async def _wifi_device(self) -> str:
+        code, out = await self._run("-t", "-f", "DEVICE,TYPE", "device", timeout=10)
+        for line in out.splitlines() if not code else []:
+            f = _split(line)
+            if len(f) >= 2 and f[1] == "wifi":
+                return f[0]
+        return "wlan0"
+
+    def _key_mgmt(self, ssid: str) -> str | None:
+        sec = next((n.get("security", "") for n in self.networks if n["ssid"] == ssid), "WPA2")
+        if not sec or sec == "--":
+            return None
+        if "WPA3" in sec and "WPA2" not in sec and "WPA1" not in sec:
+            return "sae"
+        return "wpa-psk"
+
+    async def _connect_profile(self, ssid: str, password: str) -> tuple[int, str]:
+        """Plan B: make the profile ourselves (key-mgmt set explicitly), then bring it up.
+        Fixes "802-11-wireless-security.key-mgmt: property is missing" on Bookworm."""
+        dev = await self._wifi_device()
+        await self._run("connection", "delete", "id", ssid, timeout=10)
+        args = ["connection", "add", "type", "wifi", "ifname", dev, "con-name", ssid, "ssid", ssid,
+                "connection.autoconnect", "yes"]
+        km = self._key_mgmt(ssid)
+        if password and km:
+            args += ["wifi-sec.key-mgmt", km, "wifi-sec.psk", password]
+        code, out = await self._run(*args, timeout=15)
+        if code:
+            return code, out
+        return await self._run("--wait", "35", "connection", "up", "id", ssid, timeout=CONNECT_TIMEOUT)
+
     async def connect(self, ssid: str, password: str = ""):
-        """Join `ssid`. The password is never logged."""
+        """Join `ssid`. The password is never logged or shown."""
         if not self.available or self.busy or not ssid:
             return
         self.busy = ssid
         self.result = None
+        hide = (lambda t: t.replace(password, "***")) if password else (lambda t: t)
         try:
             known = ssid in await self._known()
             if known and not password:
@@ -159,14 +197,17 @@ class Wifi:
                 if password:
                     args += ["password", password]
                 code, out = await self._run(*args, timeout=CONNECT_TIMEOUT)
+                if code and not _is_wrong_password(out) and "no network with ssid" not in out.lower():
+                    log.info("connect to %s: plan A failed (%s), trying plan B", ssid, hide(out)[:160])
+                    code, out = await self._connect_profile(ssid, password)
                 if code:
-                    # nmcli keeps a profile even when the password was wrong: remove it so the
-                    # Pi doesn't keep retrying it in the background
+                    # don't leave a broken profile that the Pi keeps retrying in the background
                     await self._run("connection", "delete", "id", ssid, timeout=10)
             if code:
-                safe = out.replace(password, "***") if password else out
-                log.warning("connect to %s failed: %s", ssid, safe[:200])
-                self.result = {"ok": False, "msg": _thai_error(safe), "ssid": ssid}
+                safe = hide(out)
+                log.warning("connect to %s failed: %s", ssid, safe[:300])
+                detail = next((l.strip() for l in safe.splitlines() if l.strip().lower().startswith("error")), safe.strip())
+                self.result = {"ok": False, "msg": _thai_error(safe), "ssid": ssid, "detail": detail[:160]}
             else:
                 log.info("connected to Wi-Fi %s", ssid)
                 self.result = {"ok": True, "msg": f"เชื่อมต่อ {ssid} แล้ว", "ssid": ssid}
@@ -175,6 +216,6 @@ class Wifi:
                 asyncio.create_task(self.scan())
         except Exception as e:
             log.warning("connect: %s", type(e).__name__)
-            self.result = {"ok": False, "msg": "เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง", "ssid": ssid}
+            self.result = {"ok": False, "msg": "เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง", "ssid": ssid, "detail": type(e).__name__}
         finally:
             self.busy = None

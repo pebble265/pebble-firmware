@@ -31,6 +31,7 @@ from .realtime import Realtime
 from .spotify import Spotify
 from .telemetry import Telemetry
 from .voice import Voice
+from .volume import Volume
 from .wifi import Wifi
 
 log = logging.getLogger("pebble")
@@ -140,8 +141,14 @@ class Robot:
         self.camera = Camera(cfg.camera_enabled, self._on_arrive_thread)
         self.ble = PairingBle(cfg.serial, cfg.model, cfg.color, VERSION)
         self.realtime = Realtime(self.api, self._on_realtime)
-        self.spotify = Spotify(cfg.spotify_enabled, cfg.spotify_name)
+        # music: Bluetooth speaker (default) or Spotify Connect; same interface
+        if cfg.music_source == "spotify":
+            self.spotify = Spotify(cfg.spotify_enabled, cfg.spotify_name)
+        else:
+            from .bt_speaker import BtSpeaker
+            self.spotify = BtSpeaker(cfg.spotify_name)
         self.wifi = Wifi()
+        self.volume = Volume()
         self.net_wake = asyncio.Event()       # set after joining a Wi-Fi: retry the server right away
         self.wifi.on_connected = self._on_wifi_connected
 
@@ -208,6 +215,7 @@ class Robot:
             asyncio.create_task(self._ui_loop(), name="ui"),
             asyncio.create_task(self._head_follow(), name="head"),
             asyncio.create_task(self.spotify.run_forever(), name="spotify"),
+            asyncio.create_task(self.volume.run_forever(), name="volume"),
             *[asyncio.create_task(c) for c in extra_tasks],
         ]
         if self.text_mode:
@@ -476,6 +484,19 @@ class Robot:
             self.set_activity("happy", 2.5)
         elif a == "box":
             self.esp.box_cmd("toggle")
+        elif a == "volume":
+            do = str(msg.get("do", ""))
+            if do == "up":
+                await self.volume.change(+5)
+            elif do == "down":
+                await self.volume.change(-5)
+            elif do == "mute":
+                await self.volume.toggle_mute()
+            elif do == "set":
+                try:
+                    await self.volume.set(int(msg.get("value", 50)))
+                except (TypeError, ValueError):
+                    pass
         elif a == "wifiScan":
             asyncio.create_task(self.wifi.scan())
         elif a == "wifiConnect":
@@ -486,6 +507,10 @@ class Robot:
             self.wifi.result = None
         elif a == "music":
             await self.spotify.command(str(msg.get("do", "toggle")))
+        elif a == "btPair" and hasattr(self.spotify, "pair_mode"):
+            await self.spotify.pair_mode()
+        elif a == "btDisconnect" and hasattr(self.spotify, "disconnect"):
+            await self.spotify.disconnect()
         elif a == "touch":
             pass  # just wakes the screen (last_interaction above)
 
@@ -960,6 +985,7 @@ class Robot:
             },
             "level": round(self.voice.level, 2),
             "music": self.spotify.view(),
+            "volume": self.volume.view(),
             "sleep": mood == "sleepy" and not talking and not self.pending,
             "idleSeconds": int(time.monotonic() - self.last_interaction),
             "toast": toast,
@@ -1101,6 +1127,13 @@ def run_web(cfg: Config, text_mode: bool = False, browser: bool = True, port: in
     server = UiServer(robot, port)
 
     async def start():
+        import signal
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGHUP):  # pkill / logout: close the screen + spotifyd cleanly
+            try:
+                loop.add_signal_handler(sig, robot.request_stop)
+            except (NotImplementedError, RuntimeError):
+                pass
         await server.start()
         if browser:
             await server.open_kiosk()

@@ -13,7 +13,7 @@ Pi -> ESP32   {"cmd":"move","dir":"forward"|"backward"|"left"|"right"|"stop","sp
               {"cmd":"emoji","score":1-7,"ms":6000}         LED panel shows the check-in emoji
               {"cmd":"buzz","mode":"beep"|"double"|"alarm"|"off"}
               {"cmd":"hello"} {"cmd":"status"} {"cmd":"ping"}
-ESP32 -> Pi   {"evt":"hello","fw":"medbot-2.0.0","caps":[...]}
+ESP32 -> Pi   {"evt":"hello","fw":"medbot-3.0.0","caps":[...]}
               {"evt":"status","battery":70,"box":"closed","dist":420,...}
               {"evt":"box","state":"opening|open|closing|closed","by":"touch|pi|menu|alarm"}
               {"evt":"dispensed","slot":1,"id":"<doseId>","ok":true}

@@ -141,6 +141,19 @@ input{font:inherit;user-select:text}
 .pctl{display:flex;align-items:center;gap:22px;margin-top:16px}
 .pctl .side{width:52px;height:52px;border-radius:50%;background:var(--card);box-shadow:var(--shadow);display:grid;place-items:center}
 .pctl .big{width:72px;height:72px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;box-shadow:0 8px 20px rgba(240,68,58,.35)}
+.cover.bt{background:linear-gradient(135deg,#5AA7FF,#2563EB)}
+.spoti.bt{color:#2563EB;background:#E6EEFF}
+.btBtns{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.btWait{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:15px;font-weight:700;color:#2563EB}
+#device{overflow-y:auto}
+.vol{display:flex;align-items:center;gap:10px;margin-top:16px;max-width:430px}
+.vol .vb{width:42px;height:42px;flex:none;border-radius:50%;background:var(--card);box-shadow:var(--shadow);display:grid;place-items:center}
+.vol .vm{color:var(--muted)}
+.vol .vm.on{color:var(--red)}
+.vbar{flex:1;height:14px;border-radius:999px;background:#E2E2E7;position:relative;padding:14px 0;background-clip:content-box;box-sizing:content-box}
+.vbar i{position:absolute;left:0;top:14px;height:14px;border-radius:999px;background:var(--text);width:0}
+.vbar.muted i{background:#B9B9BF}
+.vtxt{width:46px;flex:none;text-align:right;font-weight:800;font-size:15px}
 .spoti{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#1AA34A;background:#E7F8EE;border-radius:999px;padding:4px 10px}
 
 /* device page */
@@ -303,6 +316,11 @@ input{font:inherit;user-select:text}
 "use strict";
 // ---------------------------------------------------------------- icons (24px line icons)
 const P = {
+  vol:'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke-linejoin="round"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  mute:'<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke-linejoin="round"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
+  minus:'<path d="M6 12h12"/>',
+  plus:'<path d="M6 12h12M12 6v12"/>',
+  bt:'<path d="m7 7 10 10-5 4V3l5 4L7 17"/>',
   lock:'<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   back:'<path d="M15 5l-7 7 7 7"/>',
@@ -416,7 +434,7 @@ function wifiHTML() {
       <button class="btnTake" data-a="wclose">เสร็จ</button></div>`;
   }
   if (W.sel) {
-    const err = r && !r.ok && r.ssid === W.sel ? `<div class="wMsg err">${esc(r.msg)}</div>` : '';
+    const err = r && !r.ok && r.ssid === W.sel ? `<div class="wMsg err">${esc(r.msg)}</div>${r.detail ? `<div class="wMsg" style="font-size:11.5px;margin-top:-4px">${esc(r.detail)}</div>` : ''}` : '';
     const short = W.secure && W.pw.length > 0 && W.pw.length < 8 ? '<div class="wMsg">รหัสผ่าน Wi-Fi ต้องมีอย่างน้อย 8 ตัว</div>' : '';
     const shown = W.pw ? esc(W.show ? W.pw : '•'.repeat(W.pw.length)) : '<span class="ph">รหัสผ่าน Wi-Fi</span>';
     return head(esc(W.sel), `<button class="wIcon" data-a="wback" aria-label="กลับ">${ic('back', 22)}</button>`)
@@ -427,7 +445,7 @@ function wifiHTML() {
   const list = (ws_.networks || []).map((n) => `<button class="wRow ${n.active ? 'on' : ''}" data-a="wsel" data-ssid="${esc(n.ssid)}" data-sec="${n.secure ? 1 : 0}" data-known="${n.known ? 1 : 0}" data-act="${n.active ? 1 : 0}" data-ent="${n.enterprise && !n.known ? 1 : 0}">
       ${bars(n.signal)}<span class="n">${esc(n.ssid)}</span>
       <span class="s">${n.active ? 'เชื่อมต่ออยู่' : n.known ? 'เคยเชื่อมแล้ว' : n.enterprise ? 'ต้องใช้ชื่อผู้ใช้' : ''}</span>${n.secure ? `<span style="color:var(--muted)">${ic('lock', 18)}</span>` : ''}</button>`).join('');
-  const err = W.note ? `<div class="wMsg err">${esc(W.note)}</div>` : r && !r.ok ? `<div class="wMsg err">${esc(r.msg)}</div>` : '';
+  const err = W.note ? `<div class="wMsg err">${esc(W.note)}</div>` : r && !r.ok ? `<div class="wMsg err">${esc(r.msg)}</div>${r.detail ? `<div class="wMsg" style="font-size:11.5px;margin-top:-4px">${esc(r.detail)}</div>` : ''}` : '';
   const status = ws_.scanning ? '<div class="wMsg">กำลังค้นหา Wi-Fi…</div>'
     : !list ? '<div class="wMsg">ไม่พบ Wi-Fi แตะปุ่มค้นหาใหม่</div>' : '<div class="wMsg">แตะชื่อ Wi-Fi ที่ต้องการเชื่อมต่อ</div>';
   return `<div class="wHead"><div class="h2">ตั้งค่า Wi-Fi</div>
@@ -480,6 +498,13 @@ document.addEventListener('click', (e) => {
   else if (a === 'box') send({a:'box'});
   else if (a === 'desktop') send({a:'desktop'});
   else if (a === 'music') send({a:'music', do:t.dataset.do});
+  else if (a === 'vol') send({a:'volume', do:t.dataset.do});
+  else if (a === 'volset') {
+    const r = t.getBoundingClientRect();
+    const v = Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * 100);
+    if (S.volume) { S.volume.level = v; S.volume.muted = false; paintVolume(); }
+    send({a:'volume', do:'set', value:v});
+  }
 });
 $('form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -636,8 +661,64 @@ function miniHTML() {
     <div class="t"><b>${esc(m.title)}</b><span>${esc(m.artist)}</span></div>
     ${m.controls ? `<button data-a="music" data-do="toggle">${ic(m.status === 'Playing' ? 'pause' : 'play', 16)}</button>` : ''}</div>`;
 }
+function volHTML() {
+  if (!S.volume || !S.volume.ok) return '';
+  return `<div class="vol">
+    <button class="vb vm ${S.volume.muted ? 'on' : ''}" data-a="vol" data-do="mute" aria-label="ปิดเสียง">${ic(S.volume.muted ? 'mute' : 'vol', 20)}</button>
+    <button class="vb" data-a="vol" data-do="down" aria-label="ลดเสียง">${ic('minus', 20, 2.6)}</button>
+    <div class="vbar" data-a="volset"><i class="vfill"></i></div>
+    <button class="vb" data-a="vol" data-do="up" aria-label="เพิ่มเสียง">${ic('plus', 20, 2.6)}</button>
+    <span class="vtxt"></span></div>`;
+}
+function paintVolume() {  // in place, so tapping +/- doesn't rebuild the page
+  if (!S.volume) return;
+  document.querySelectorAll('.vfill').forEach((el) => { el.style.width = S.volume.level + '%'; });
+  document.querySelectorAll('.vbar').forEach((el) => el.classList.toggle('muted', !!S.volume.muted));
+  document.querySelectorAll('.vtxt').forEach((el) => { el.textContent = S.volume.muted ? 'ปิด' : S.volume.level + '%'; });
+}
+function btHTML(m) {
+  const head = `<div class="top"><div><div class="name">เพลง</div><div class="sub"><span class="spoti bt">${ic('bt', 12)}ลำโพง Bluetooth · ${esc(m.name)}</span></div></div>
+    <div class="clock"><b>${S.clock}</b>${statusBar()}</div></div>`;
+  const cover = `<div class="cover bt">${ic('bt', 80, 1.8)}</div>`;
+  if (m.error) return head + `<div class="player">${cover}<div><div class="ptitle">ใช้ Bluetooth ไม่ได้</div>
+      <div class="sub" style="margin-top:10px;font-size:15px">${esc(m.error)}</div></div></div>`;
+  const pairing = m.pairLeft > 0 ? `<div class="btWait"><div class="spin" style="width:20px;height:20px;border-top-color:#2563EB"></div>
+      พร้อมให้จับคู่ · เหลือ ${mmss(m.pairLeft)}</div>` : '';
+  if (!m.device) {
+    const again = m.paired && m.paired.length ? `<div class="sub" style="margin-top:12px">มือถือที่เคยจับคู่แล้ว (${esc(m.paired.join(', '))}) แค่เปิด Bluetooth แล้วแตะ <b>${esc(m.name)}</b> ได้เลย</div>` : '';
+    return head + `<div class="player">${cover}<div>
+      <div class="ptitle">ใช้หุ่นเป็นลำโพง<br>เปิดเพลงจากมือถือ</div>
+      <div class="steps" style="margin-top:14px">
+        <div class="step"><i>1</i><div>แตะ <b>จับคู่มือถือ</b> ด้านล่าง</div></div>
+        <div class="step"><i>2</i><div>บนมือถือ: การตั้งค่า → <b>Bluetooth</b> → แตะ <b>${esc(m.name)}</b></div></div>
+        <div class="step"><i>3</i><div>เปิดเพลงจาก Spotify หรือแอปไหนก็ได้</div></div>
+      </div>
+      ${pairing || `<div class="btBtns"><button class="btnTake" style="background:#2563EB;box-shadow:0 6px 16px rgba(37,99,235,.3)" data-a="btPair">${ic('bt', 18)}จับคู่มือถือ</button></div>`}
+      ${again}</div></div>`;
+  }
+  const disc = `<button class="btnGhost" style="font-size:13px;padding:8px 14px;background:var(--card);box-shadow:var(--shadow)" data-a="btDisconnect">ตัดการเชื่อมต่อ</button>`;
+  if (!musicOn()) return head + `<div class="player">${cover}<div>
+      <div class="sub" style="margin-bottom:6px;color:var(--success);font-weight:700">● เชื่อมต่อกับ ${esc(m.device)}</div>
+      <div class="ptitle">เปิดเพลงบนมือถือได้เลย</div>
+      <div class="sub" style="margin-top:8px;font-size:15px">เสียงจะออกที่หุ่น</div>
+      ${volHTML()}
+      <div class="btBtns">${disc}</div></div></div>`;
+  const ctl = m.controls ? `<div class="pctl">
+      <button class="side" data-a="music" data-do="prev" aria-label="ก่อนหน้า">${ic('prev', 22)}</button>
+      <button class="big" data-a="music" data-do="toggle" aria-label="เล่น/หยุด">${ic(m.status === 'Playing' ? 'pause' : 'play', 32)}</button>
+      <button class="side" data-a="music" data-do="next" aria-label="ถัดไป">${ic('next', 22)}</button>${disc}</div>${volHTML()}` : `${volHTML()}<div class="btBtns">${disc}</div>`;
+  const pic = m.art ? `<img class="cover" src="${esc(m.art)}" alt="">` : `<div class="cover">${ic('music', 70)}</div>`;
+  return head + `<div class="player">${pic}<div style="min-width:0">
+      <div class="sub" style="margin-bottom:6px">เล่นผ่าน Bluetooth จาก ${esc(m.device)}</div>
+      <div class="ptitle">${esc(m.title)}</div>
+      <div class="medSub" style="font-size:16px;margin-top:4px">${esc(m.artist)}${m.album ? ` · ${esc(m.album)}` : ''}</div>
+      ${m.length ? `<div class="pbar"><i id="pfill"></i></div>
+      <div class="ptimes"><span id="ppos"></span><span>${mmss(m.length)}</span></div>` : ''}
+      ${ctl}</div></div>`;
+}
 function musicHTML() {
   const m = S.music;
+  if (m && m.kind === 'bluetooth') return btHTML(m);
   const head = `<div class="top"><div><div class="name">เพลง</div><div class="sub"><span class="spoti">${ic('music', 12)}Spotify Connect</span></div></div>
     <div class="clock"><b>${S.clock}</b>${statusBar()}</div></div>`;
   if (!m) return head + `<div class="empty"><div class="pill" style="width:56px;height:56px;background:#1AA34A">${ic('music', 26)}</div>
@@ -649,7 +730,6 @@ function musicHTML() {
         <div class="step"><i>2</i><div>เปิดแอป <b>Spotify</b> แล้วเปิดเพลง</div></div>
         <div class="step"><i>3</i><div>แตะไอคอน <b>ลำโพง/อุปกรณ์</b> ล่างจอ แล้วเลือก <b>${esc(m.name)}</b></div></div>
       </div><div class="sub" style="margin-top:12px">ต้องใช้ Spotify Premium</div></div></div>`;
-  const pct = m.length ? Math.min(100, (m.position / m.length) * 100) : 0;
   const ctl = m.controls ? `<div class="pctl">
       <button class="side" data-a="music" data-do="prev" aria-label="ก่อนหน้า">${ic('prev', 22)}</button>
       <button class="big" data-a="music" data-do="toggle" aria-label="เล่น/หยุด">${ic(m.status === 'Playing' ? 'pause' : 'play', 32)}</button>
@@ -658,9 +738,9 @@ function musicHTML() {
       <div class="sub" style="margin-bottom:6px">กำลังเล่นบน ${esc(m.name)}</div>
       <div class="ptitle">${esc(m.title)}</div>
       <div class="medSub" style="font-size:16px;margin-top:4px">${esc(m.artist)}${m.album ? ` · ${esc(m.album)}` : ''}</div>
-      <div class="pbar"><i style="width:${pct}%"></i></div>
-      <div class="ptimes"><span>${mmss(m.position)}</span><span>${mmss(m.length)}</span></div>
-      ${ctl}</div></div>`;
+      <div class="pbar"><i id="pfill"></i></div>
+      <div class="ptimes"><span id="ppos"></span><span>${mmss(m.length)}</span></div>
+      ${ctl}${volHTML()}</div></div>`;
 }
 
 function deviceHTML() {
@@ -676,6 +756,8 @@ function deviceHTML() {
       ${tile('บอร์ด ESP32', s.esp32 ? '<span style="color:var(--success)">เชื่อมต่อแล้ว</span>' : '<span style="color:var(--red)">ไม่ได้ต่อ</span>')}
       ${tile('กล่องยา', BOX_TEXT[s.box] || '–')}
     </div>
+    ${S.volume && S.volume.ok ? `<div class="card" style="margin-bottom:12px;padding:0 18px 12px;display:flex;align-items:center;gap:16px">
+      <div class="h2" style="font-size:16px;flex:none;margin-top:12px">เสียงลำโพง</div><div style="flex:1">${volHTML().replace('class="vol"', 'class="vol" style="max-width:none;margin-top:12px"')}</div></div>` : ''}
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:12px">
       <div class="card" style="padding:4px 18px">
         ${kv('Serial', s.serial)}${kv('Wi-Fi', s.wifi || 'ไม่ได้ต่อ')}${kv('IP', s.ip)}${kv('หน้า LED (ESP32)', s.esp32 ? (s.espLink === 'uart' ? 'ต่ออยู่ · สาย RX/TX' : 'ต่ออยู่ · สาย USB') : 'ไม่ได้ต่อ')}${kv('เวอร์ชัน', s.version + (s.espFw ? ` · ${s.espFw}` : ''))}
@@ -689,7 +771,7 @@ function deviceHTML() {
         <button class="btnGhost" data-a="desktop" style="font-size:13px;padding:8px 14px">ไปหน้า desktop (กลับมาด้วยไอคอน pebble)</button>
       </div>
     </div>
-    <div class="sub" style="margin-top:10px;text-align:center">ตั้งชื่อหุ่น เสียง และช่วงเวลาเงียบ ได้ในแอป Pebble บนมือถือ</div>`;
+    `;
 }
 
 function gateHTML() {
@@ -769,7 +851,12 @@ function render() {
     if (view === 'home') set($('home'), homeHTML());
     if (view === 'meds') set($('meds'), medsHTML());
     if (view === 'device') set($('device'), deviceHTML());
-    if (view === 'music') set($('music'), musicHTML());
+    if (view === 'music') {
+      set($('music'), musicHTML());  // only rebuilt when the song / state changes
+      const m = S.music, fill = $('pfill'), pos = $('ppos');  // progress moves in place (no flicker)
+      if (m && fill && m.length) fill.style.width = (m.length ? Math.min(100, (m.position / m.length) * 100) : 0) + '%';
+      if (m && pos) pos.textContent = mmss(m.position);
+    }
     if (view === 'talk') {
       set($('talkL'), talkLeftHTML());
       set($('crisis'), crisisHTML());
@@ -798,6 +885,8 @@ function render() {
   if (sleep) set($('sleep'), `<div class="big">${S.clock}</div><div class="d">${esc(S.date)}</div>
     <div style="margin-top:26px;opacity:.85">${orb(54, true)}</div>
     ${musicOn() && S.music.status === 'Playing' ? `<div class="d" style="margin-top:14px;font-size:15px">♪ ${esc(S.music.title)} · ${esc(S.music.artist)}</div>` : ''}`);
+
+  paintVolume();
 
   // Wi-Fi setup screen (over everything, also over the "no internet" screen)
   $('wifi').classList.toggle('hidden', !W.open);

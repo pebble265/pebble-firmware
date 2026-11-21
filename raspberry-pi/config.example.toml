@@ -17,7 +17,7 @@ color = "Space Black"
 
 [esp32]
 # Serial port of the ESP32.
-# "auto" = RX/TX wires first (/dev/serial0: Pi pin 8 TX -> ESP32 GPIO18, pin 10 RX <- GPIO17, GND),
+# "auto" = RX/TX wires first (/dev/serial0: Pi pin 8 TX -> ESP32 GPIO44, pin 10 RX <- GPIO43, GND),
 #          then a USB cable (/dev/ttyACM*, /dev/ttyUSB*). Or set one: "/dev/serial0", "/dev/ttyACM0".
 # "sim" = no ESP32 attached (prints the commands instead).
 port = "auto"
@@ -57,9 +57,17 @@ host = "demo.thingsboard.io"
 port = 1883
 token = ""
 
+[music]
+# "bluetooth" (default): the robot is a Bluetooth speaker called [spotify].device_name.
+#   On the robot: แท็บ เพลง → จับคู่มือถือ, then pick that name in the phone's Bluetooth
+#   settings and play any app (Spotify, YouTube, Apple Music …).
+# "spotify": Spotify Connect (spotifyd). Note: Spotify refuses newer accounts there
+#   ("audio key error": every song is skipped), so Bluetooth is the default.
+source = "bluetooth"
+
 [spotify]
-# The robot becomes a Spotify Connect speaker: in the Spotify app (Premium) on a phone
-# on the same Wi-Fi, tap the speaker icon and pick this name.
+# Spotify Connect (only when [music] source = "spotify"). device_name is also the
+# robot's Bluetooth name.
 enabled = true
 device_name = "pebble(a)"
 

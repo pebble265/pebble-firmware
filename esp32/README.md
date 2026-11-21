@@ -1,4 +1,4 @@
-# pebble(a) · ESP32-S3 MedBot (medbot-2.1.0)
+# pebble(a) · ESP32-S3 MedBot (medbot-3.0.0)
 
 โค้ดของทีม (เมนูทดสอบผ่าน Serial) + ลิงก์คุยกับ Raspberry Pi 5 ทางสาย RX/TX (หรือ USB)
 รูปแบบข้อความดูที่ [`PROTOCOL.md`](PROTOCOL.md)
@@ -17,7 +17,7 @@
 | แผง LED 16x16 (หน้า Mochi) / ไฟหลัง | GPIO38 / GPIO39 |
 | Buzzer / พัดลม | GPIO40 / GPIO41 |
 | วัดแบต | GPIO1 (ตั้ง `BATT_DIVIDER`, `BATT_EMPTY_MV`, `BATT_FULL_MV` ให้ตรงแบตจริง) |
-| Raspberry Pi (หลัก) | สาย RX/TX: Pi ขา 8 → GPIO18, Pi ขา 10 ← GPIO17, GND ↔ GND (เปลี่ยนขาได้ที่ `PIN_PI_RX/PIN_PI_TX`) |
+| Raspberry Pi (หลัก) | สาย RX/TX: Pi ขา 8 → GPIO44, Pi ขา 10 ← GPIO43, GND ↔ GND (เปลี่ยนขาได้ที่ `PIN_PI_RX/PIN_PI_TX`) |
 | Raspberry Pi (สำรอง) | สาย USB-C ช่อง USB ของ ESP32-S3 (GPIO19/20) |
 
 ## อัปโหลด (Arduino IDE 2.x)
@@ -33,10 +33,13 @@
 เสร็จแล้วถอดสายจากคอม ต่อสาย RX/TX 3 เส้นเข้า Raspberry Pi (ตารางด้านบน) แอปบน Pi จะหาเอง (`/dev/serial0` ก่อน แล้วค่อยสาย USB)
 `install.sh` บน Pi เปิดพอร์ต UART ให้แล้ว (ต้อง reboot ครั้งแรก)
 
-ทดสอบอีโมจิบนจอ LED โดยไม่ใช้ Pi: Serial Monitor → `7` (เมนูจอ LED) → `e1` … `e7`
-หรือพิมพ์ `{"cmd":"emoji","score":7}`
+โค้ดนี้คือ **โค้ดทีมเวอร์ชันอัตโนมัติ** (ไม่มีเมนู) + ลิงก์คุยกับ Pi · ไม่ต่อ Pi ก็ทำงานเองเหมือนเดิมทุกอย่าง
+ต่อ Pi อยู่: แตะทัช 1 ตอนกล่องปิด = เปิดกล่องเฉย ๆ (Pi เป็นคนจ่ายยาตามเวลา กันยาออกเกิน) · ทัช 2 = ปุ่มคุยกับ Pebbi
 
-ไฟล์ `emoji_faces.h` (อีโมจิ 16x16 จาก Noto Color Emoji) ต้องอยู่โฟลเดอร์เดียวกับ .ino
+ทดสอบเช็กอินความรู้สึกโดยไม่ใช้ Pi: Serial Monitor (115200, ส่งท้ายด้วย Newline) พิมพ์ `{"cmd":"emoji","score":7}`
+อนิเมชันของแต่ละระดับแก้ได้ที่ `CHECKIN_ANIMS` ใน .ino
+
+`mochi_frames.h` (อนิเมชัน Mochi 18 แบบของทีม) อยู่ในโฟลเดอร์เดียวกับ .ino แล้ว
 
 ## ปรับแต่ง
 

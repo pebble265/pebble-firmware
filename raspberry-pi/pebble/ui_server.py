@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -21,7 +22,7 @@ from aiohttp import WSMsgType, web
 log = logging.getLogger("ui")
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
-ACTIONS = {"talk", "stop", "send", "take", "later", "mood", "refresh", "touch", "wave", "box", "desktop", "music", "wifiScan", "wifiConnect", "wifiClear"}
+ACTIONS = {"talk", "stop", "send", "take", "later", "mood", "refresh", "touch", "wave", "box", "desktop", "music", "wifiScan", "wifiConnect", "wifiClear", "btPair", "btDisconnect", "volume"}
 HIDE_MINUTES = 10  # "ตั้งค่า Wi-Fi": leave the desktop free this long
 
 
@@ -110,6 +111,10 @@ class UiServer:
             return
         profile = Path(os.path.expanduser("~/.config/pebble-kiosk"))
         profile.mkdir(parents=True, exist_ok=True)
+        self.profile = profile
+        # a kiosk left over from the previous run (app restarted / killed) would take our launch
+        # and the watcher would keep relaunching = the screen reloads every few seconds
+        self._kill_stale_kiosks()
         args = [
             exe,
             f"--app=http://127.0.0.1:{self.port}/",
@@ -129,6 +134,46 @@ class UiServer:
         log.info("opened %s in kiosk mode", Path(exe).name)
         asyncio.create_task(self._watch_browser())
 
+    def _kiosk_pids(self) -> list[int]:
+        """Chromium processes using our kiosk profile (any of them = the screen is up)."""
+        prof = getattr(self, "profile", None)
+        if not prof:
+            return []
+        try:
+            out = subprocess.run(["pgrep", "-f", f"chrom[a-z-]*( .*)? --.*user-data-dir={prof}"],
+                                 capture_output=True, text=True, timeout=3).stdout
+        except Exception:
+            return []
+        me = os.getpid()
+        return [int(p) for p in out.split() if p.isdigit() and int(p) != me]
+
+    @staticmethod
+    def _signal(pids: list[int], sig: int):
+        for pid in pids:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+
+    def _kill_stale_kiosks(self):
+        pids = self._kiosk_pids()
+        if not pids:
+            return
+        log.info("closing %d leftover kiosk process(es) from the last run", len(pids))
+        self._signal(pids, signal.SIGTERM)
+        for _ in range(30):
+            if not self._kiosk_pids():
+                break
+            time.sleep(0.1)
+        else:
+            self._signal(self._kiosk_pids(), signal.SIGKILL)
+            time.sleep(0.3)
+        for lock in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+            try:
+                (self.profile / lock).unlink()
+            except OSError:
+                pass
+
     def _launch(self):
         if self.args and (not self.browser or self.browser.poll() is not None):
             self.browser = subprocess.Popen(self.args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -147,9 +192,12 @@ class UiServer:
                 self._launch()
                 continue
             if self.browser and self.browser.poll() is not None:
+                if self._kiosk_pids():
+                    continue  # our launcher handed over to a Chromium that is still showing the app
                 log.warning("browser exited (%s): reopening", self.browser.returncode)
                 await asyncio.sleep(2)
-                self._launch()
+                if not self._kiosk_pids():
+                    self._launch()
 
     def hide_kiosk(self, minutes: float = HIDE_MINUTES):
         """Close the full-screen app so the desktop (Wi-Fi menu, keyboard) can be used."""
@@ -165,3 +213,5 @@ class UiServer:
     def close_kiosk(self):
         if self.browser and self.browser.poll() is None:
             self.browser.terminate()
+        if getattr(self, "profile", None):
+            self._signal(self._kiosk_pids(), signal.SIGTERM)

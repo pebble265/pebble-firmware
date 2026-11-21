@@ -46,6 +46,7 @@ class Config:
     tb_token: str = ""
     spotify_enabled: bool = True
     spotify_name: str = "pebble(a)"
+    music_source: str = "bluetooth"  # "bluetooth" speaker (default) or "spotify" Connect
     remind_every_minutes: float = 5
     give_up_after_minutes: float = 60
     extra: dict = field(default_factory=dict)
@@ -68,6 +69,7 @@ def load(path: str | None = None) -> Config:
     v, c = raw.get("voice", {}), raw.get("camera", {})
     t, p = raw.get("thingsboard", {}), raw.get("dispenser", {})
     sp = raw.get("spotify", {})
+    mu = raw.get("music", {})
 
     url = str(s.get("url", "")).rstrip("/")
     if not url or not r.get("serial") or not r.get("secret"):
@@ -103,6 +105,7 @@ def load(path: str | None = None) -> Config:
         tb_token=t.get("token", ""),
         spotify_enabled=bool(sp.get("enabled", True)),
         spotify_name=str(sp.get("device_name", "pebble(a)"))[:40],
+        music_source="spotify" if str(mu.get("source", "bluetooth")).lower() == "spotify" else "bluetooth",
         remind_every_minutes=float(p.get("remind_every_minutes", 5)),
         give_up_after_minutes=float(p.get("give_up_after_minutes", 60)),
     )

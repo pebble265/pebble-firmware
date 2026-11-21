@@ -5,8 +5,8 @@
 
 | Raspberry Pi 5 | ESP32-S3 |
 |---|---|
-| ขา 8 (GPIO14 TX) | GPIO18 (RX) |
-| ขา 10 (GPIO15 RX) | GPIO17 (TX) |
+| ขา 8 (GPIO14 TX) | GPIO44 (RXD0) |
+| ขา 10 (GPIO15 RX) | GPIO43 (TXD0) |
 | ขา 6 (GND) | GND |
 
 ไฟ 3.3 V ทั้งคู่ ต่อตรงได้ไม่ต้องมีตัวแปลงระดับ (ห้ามต่อ 5 V เข้าขา RX/TX)
@@ -24,7 +24,7 @@
 | `dispense` | `{"cmd":"dispense","slot":1,"id":"<doseId>"}` | ดันยาลงกล่อง (MED_2) → เลื่อนกล่องออก (MED_1) → ตอบ `dispensed` |
 | `box` | `{"cmd":"box","do":"open"}` | `open` / `close` / `toggle` |
 | `arm` | `{"cmd":"arm","do":"wave"}` | `wave` โบกมือ · `home` · `{"do":"angle","angle":120}` |
-| `emoji` | `{"cmd":"emoji","score":7,"ms":6000}` | อีโมจิที่แตะเช็กอินความรู้สึกบนจอ Pi (1 😭 2 🥹 3 😢 4 😌 5 ☺️ 6 😊 7 🥰) ค้างไว้ `ms` แล้วกลับหน้าเดิม (`ms`:0 = ค้างไว้จนมีคำสั่งหน้าใหม่) |
+| `emoji` | `{"cmd":"emoji","score":7,"ms":6000}` | เช็กอินความรู้สึกบนจอ Pi → เล่นอนิเมชัน Mochi ของทีมประมาณ `ms` แล้วกลับหน้าปกติ: 1 😭 frustrated · 2 🥹 embarrassed · 3 😢 confused_2 · 4 😌 content · 5 ☺️ relaxed · 6 😊 happy · 7 🥰 love (แก้ได้ที่ `CHECKIN_ANIMS` ใน .ino) |
 | `face` | `{"cmd":"face","mood":"happy"}` | หน้าบนแผง LED 16x16 ตามอารมณ์ (ดู `MOOD_FACES` ใน .ino) หรือ `{"anim":"excited_2","loops":2}` |
 | `buzz` | `{"cmd":"buzz","mode":"double"}` | `beep` `double` `alarm` `off` |
 | `fan` | `{"cmd":"fan","on":true}` | พัดลม |
@@ -35,7 +35,7 @@
 
 | เหตุการณ์ | ตัวอย่าง | เมื่อไร |
 |---|---|---|
-| `hello` | `{"evt":"hello","fw":"medbot-2.0.0","board":"esp32s3-medbot","slots":1,"caps":[…]}` | เปิดเครื่อง / ถูกถาม |
+| `hello` | `{"evt":"hello","fw":"medbot-3.0.0","board":"esp32s3-medbot","slots":1,"caps":[…]}` | เปิดเครื่อง / ถูกถาม |
 | `status` | `{"evt":"status","battery":70,"battMv":3900,"box":"closed","dist":420,"fan":true,"anim":"content"}` | ทุก 10 วิ (ตอนต่อ Pi) |
 | `box` | `{"evt":"box","state":"closing","by":"touch"}` | กล่องเลื่อน: `opening` `open` `closing` `closed` · `by`: `touch` `pi` `menu` `alarm` |
 | `dispensed` | `{"evt":"dispensed","slot":1,"id":"…","ok":true}` | กล่องเลื่อนออกพร้อมยาแล้ว (`ok:false` + `msg` ถ้ากล่องไม่ได้ปิดอยู่ / เครื่องไม่ว่าง) |

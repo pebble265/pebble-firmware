@@ -41,6 +41,30 @@ if [[ -n "$SP_ARCH" && ! -x "$APP/bin/spotifyd" ]]; then
     echo "   !! ดาวน์โหลด spotifyd ไม่ได้ (ข้าม Spotify ไปก่อน รัน install.sh ใหม่ภายหลังได้)"
   fi
 fi
+# spotifyd 0.3.x is built against OpenSSL 1.1, Bookworm only ships OpenSSL 3 -> add libssl1.1 (sits next to 3)
+if [[ -x "$APP/bin/spotifyd" ]] && ldd "$APP/bin/spotifyd" 2>/dev/null | grep -q "libssl.so.1.1 => not found"; then
+  case "$(dpkg --print-architecture)" in arm64|armhf) DEB_ARCH="$(dpkg --print-architecture)" ;; *) DEB_ARCH="" ;; esac
+  POOL=https://deb.debian.org/debian/pool/main/o/openssl
+  F="$(curl -fsSL "$POOL/" | grep -o "libssl1\.1_[^\"]*_${DEB_ARCH}\.deb" | sort -uV | tail -1 || true)"
+  if [[ -n "$DEB_ARCH" && -n "$F" ]] && curl -fsSL "$POOL/$F" -o "/tmp/$F"; then
+    apt-get install -y "/tmp/$F" && echo "   libssl1.1 สำหรับ spotifyd พร้อมแล้ว"
+  else
+    echo "   !! ติดตั้ง libssl1.1 ไม่ได้: Spotify จะยังใช้ไม่ได้"
+  fi
+fi
+
+echo "==> Bluetooth speaker (phone -> robot, any music app)"
+# BlueZ + PipeWire's Bluetooth plugin receive the phone's audio (A2DP) and play it on the speaker.
+apt-get install -y bluez libspa-0.2-bluetooth || true
+rfkill unblock bluetooth 2>/dev/null || true
+BTCONF=/etc/bluetooth/main.conf
+if [[ -f $BTCONF ]]; then
+  # show up as a loudspeaker; allow a phone that was "forgotten" to pair again
+  grep -q '^Class *= *0x200414' $BTCONF || sed -i 's/^\[General\]/[General]\nClass = 0x200414/' $BTCONF
+  grep -q '^JustWorksRepairing *= *always' $BTCONF || sed -i 's/^\[General\]/[General]\nJustWorksRepairing = always/' $BTCONF
+fi
+systemctl enable --now bluetooth 2>/dev/null || true
+systemctl restart bluetooth 2>/dev/null || true
 
 echo "==> config"
 mkdir -p /etc/pebble
@@ -81,7 +105,7 @@ if [[ -f $BOOT/cmdline.txt ]]; then
   sed -i -E 's/ ?console=(serial0|ttyAMA0|ttyS0),[0-9]+//g' $BOOT/cmdline.txt
 fi
 systemctl disable --now serial-getty@ttyAMA0.service serial-getty@serial0.service 2>/dev/null || true
-echo "   ต่อสาย: Pi ขา 8 (TX) -> ESP32 GPIO18 | Pi ขา 10 (RX) <- ESP32 GPIO17 | GND -> GND  (ต้อง reboot 1 ครั้ง)"
+echo "   ต่อสาย: Pi ขา 8 (TX) -> ESP32 GPIO44 | Pi ขา 10 (RX) <- ESP32 GPIO43 | GND -> GND  (ต้อง reboot 1 ครั้ง)"
 
 HOME_DIR="$(getent passwd "$RUN_USER" | cut -d: -f6)"
 

@@ -25,7 +25,7 @@
 
 1. ลงทะเบียนหุ่นใน backend (ครั้งเดียวต่อหุ่น) ใน repo แอป `apps/api`:
    `npm run build && node --env-file=.env dist/scripts/provision-device.js 4` → ได้ serial + secret
-2. อัปโหลดโค้ด ESP32-S3 ด้วย Arduino IDE: ดู [`esp32/README.md`](esp32/README.md) แล้วต่อ ESP32 เข้า Pi ด้วยสาย RX/TX 3 เส้น (Pi ขา 8 → GPIO18, ขา 10 ← GPIO17, GND)
+2. อัปโหลดโค้ด ESP32-S3 ด้วย Arduino IDE: ดู [`esp32/README.md`](esp32/README.md) แล้วต่อ ESP32 เข้า Pi ด้วยสาย RX/TX 3 เส้น (Pi ขา 8 → GPIO44, ขา 10 ← GPIO43, GND)
 3. ติดตั้งบน Pi: ดู [`raspberry-pi/README.md`](raspberry-pi/README.md)
 4. จอหุ่นขึ้นหน้า Welcome → แตะ Continue → หน้า Setup แสดงรหัส 6 หลัก → ในแอป Pebble กด Connect แล้วพิมพ์รหัส
 
