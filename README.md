@@ -6,11 +6,11 @@
 หุ่นมีคอมพิวเตอร์ 2 ตัว:
 
 ```
-                    Wi-Fi                               USB serial (JSON ทีละบรรทัด)
+                    Wi-Fi                               สาย RX/TX (JSON ทีละบรรทัด)
  backend Pebble  ◄────────►  Raspberry Pi 5  ◄──────────────────────────────►  ESP32
  (API + Socket.IO)            "สมอง"                                          "ร่างกาย"
  ThingsBoard     ◄── MQTT ──  · หน้าจอใบหน้า (ตา/อารมณ์)                       · มอเตอร์ล้อ 2 ข้าง
- แอปมือถือ       ◄── BLE ───  · ไมค์ + ลำโพง คุยกับ Pebbi                      · servo จ่ายยา + หัว
+ แอปมือถือ       ◄── รหัส ──  · ไมค์ + ลำโพง คุยกับ Pebbi                      · servo จ่ายยา + หัว
                               · กล้อง (รู้ว่ามีคนอยู่ ตามมอง)                  · ไฟ LED วงแหวน
                               · ตารางยา จับคู่ heartbeat                        · ปุ่มบนหัว buzzer วัดแบต
 ```
@@ -25,9 +25,9 @@
 
 1. ลงทะเบียนหุ่นใน backend (ครั้งเดียวต่อหุ่น) ใน repo แอป `apps/api`:
    `npm run build && node --env-file=.env dist/scripts/provision-device.js 4` → ได้ serial + secret
-2. อัปโหลดโค้ด ESP32-S3 ด้วย Arduino IDE: ดู [`esp32/README.md`](esp32/README.md) แล้วต่อ ESP32 เข้า Pi ด้วยสาย USB
+2. อัปโหลดโค้ด ESP32-S3 ด้วย Arduino IDE: ดู [`esp32/README.md`](esp32/README.md) แล้วต่อ ESP32 เข้า Pi ด้วยสาย RX/TX 3 เส้น (Pi ขา 8 → GPIO18, ขา 10 ← GPIO17, GND)
 3. ติดตั้งบน Pi: ดู [`raspberry-pi/README.md`](raspberry-pi/README.md)
-4. เปิดแอป Pebble → เพิ่มหุ่น → แอปเจอหุ่นทาง Bluetooth (หรือพิมพ์รหัส 6 หลักที่ขึ้นบนจอหุ่น)
+4. จอหุ่นขึ้นหน้า Welcome → แตะ Continue → หน้า Setup แสดงรหัส 6 หลัก → ในแอป Pebble กด Connect แล้วพิมพ์รหัส
 
 ## ใช้งาน
 

@@ -1,6 +1,6 @@
 # pebble(a) · Raspberry Pi 5 app (pi-1.0.0)
 
-"สมอง" ของหุ่น pebble(a) เขียนด้วย Python ทำงานบน Raspberry Pi 5 แล้วสั่งงาน ESP32 ทางสาย USB
+"สมอง" ของหุ่น pebble(a) เขียนด้วย Python ทำงานบน Raspberry Pi 5 แล้วสั่งงาน ESP32 ทางสาย RX/TX (หรือ USB)
 
 ## ทำอะไรได้บ้าง
 
@@ -8,12 +8,14 @@
 |---|---|
 | หน้าจอสัมผัส | แอปสไตล์เดียวกับแอป Pebble บนมือถือ (แนวนอน): หน้าแรก (ทักทาย นาฬิกา ยาถัดไป เช็กอินความรู้สึก 7 อีโมจิ ปุ่มคุยกับ Pebbi), หน้ายาวันนี้ (แตะ "กินแล้ว"), หน้าคุยกับ Pebbi (พูดหรือพิมพ์ เห็นบทสนทนา), หน้าข้อมูลเครื่อง, หน้า Welcome → Setup (รหัสจับคู่ 6 หลัก ตาม Figma), หน้าต่างเตือนยา และนาฬิกาตอนพักจอ |
 | ใบหน้าหุ่น (ตัวเลือก) | `--ui face`: ตาขยับ กะพริบ มีอารมณ์ ตามมองคนที่กล้องเห็น ใช้กับ Pi OS Lite ที่ไม่มี desktop |
+| ตั้งค่า Wi-Fi | ในแอปเลย ไม่ต้องออกไปหน้า desktop: แท็บ pebble → ตั้งค่า Wi-Fi (หรือปุ่มบนหน้า “ต่ออินเทอร์เน็ตไม่ได้”) → เลือก Wi-Fi → พิมพ์รหัสด้วยคีย์บอร์ดบนจอ → เชื่อมต่อ · ใช้ nmcli ของ NetworkManager (install.sh ให้สิทธิ์ผ่าน polkit) · Wi-Fi ที่ต้องใช้ชื่อผู้ใช้ (802.1X) ยังไม่รองรับ |
+| Spotify | หุ่นเป็นลำโพง **Spotify Connect** ชื่อ `pebble(a)`: เปิดแอป Spotify (Premium) บนมือถือที่ต่อ Wi-Fi เดียวกัน → แตะไอคอนลำโพง → เลือก pebble(a) เสียงออกที่หุ่น จอหุ่นโชว์เพลง/ปก มีปุ่มเล่น-หยุด-ก่อนหน้า-ถัดไป (แท็บ เพลง) และหยุดเพลงให้เองตอนคุยกับ Pebbi หรือเตือนยา · ใช้ spotifyd + playerctl (install.sh ติดตั้งให้) ตั้งชื่อ/ปิดได้ที่ `[spotify]` ใน config |
 | เช็กอินความรู้สึก | แตะอีโมจิบนจอ → `POST /robot/moods` (บันทึกเป็น source `robot` ขึ้นในแอปมือถือด้วย) |
 | คุยกับ Pebbi ด้วยเสียง | กดปุ่มบนหัว → ฟัง → แปลงเป็นข้อความ → `POST /robot/chat/messages` → พูดคำตอบ คุยต่อได้หลายรอบจนเงียบหรือบอกลา ถ้า backend เจอสัญญาณวิกฤต จอจะขึ้นเบอร์สายด่วน 1323 / 1669 และเบอร์ฉุกเฉินของผู้ใช้ |
-| จับคู่กับแอป | ยังไม่มีเจ้าของ: ขอรหัส 6 หลัก (`POST /robot/pairing-code`) แสดงบนจอ และประกาศ Bluetooth LE ตามโปรโตคอลเดียวกับแอป (`INFO`, `PAIR`) |
+| จับคู่กับแอป | ยังไม่มีเจ้าของ: ขอรหัส 6 หลัก (`POST /robot/pairing-code`) แสดงบนจอหน้า Setup → พิมพ์รหัสในแอป (หน้า Enter your code) · Bluetooth ปิดไว้ (เปิดได้ด้วย `bluetooth = true` ใน `[robot]`) |
 | เตือนกินยา | ได้ `dose:due` แบบ realtime (และเช็กเองทุก 2 นาที) → สั่ง ESP32 ดันยาลงกล่องแล้วเลื่อนกล่องออก → `POST /robot/doses/:id/dispensed` → จอเตือน + พูด เตือนซ้ำทุก 5 นาที → แตะเซ็นเซอร์ 1 ปิดกล่อง หรือแตะ "กินแล้ว" บนจอ = กินแล้ว (`POST /robot/doses/:id/take`) |
 | รับคำสั่งจากแอป | `wake` (โบกมือ ทักแล้วรอฟัง), `forward` / `backward` / `left` / `right` / `stop` (ล้อ หยุดเองใน 10 วิ), `wave`, `box` (เปิด/ปิดกล่องยา) |
-| หน้า LED ของ ESP32 | เปลี่ยนตามอารมณ์ของหุ่น (ฟังอยู่ คิด พูด ดีใจ เป็นห่วง ง่วง …) แขนโบกตอนทักทายและตอนกินยาเสร็จ |
+| หน้า LED ของ ESP32 | เปลี่ยนตามอารมณ์ของหุ่น (ฟังอยู่ คิด พูด ดีใจ เป็นห่วง ง่วง …) แขนโบกตอนทักทายและตอนกินยาเสร็จ · แตะอีโมจิเช็กอินความรู้สึกบนจอ → อีโมจิเดียวกันขึ้นบนหน้า LED 6 วินาที (`{"cmd":"emoji"}`) |
 | กล้อง | รู้ว่ามีคนอยู่หน้าหุ่น ตาและหัวหันตาม ทักเมื่อกลับมาหลังหายไปนาน ภาพไม่ถูกบันทึกหรือส่งออกจากเครื่อง |
 | ช่วงเวลาเงียบ | ตามที่ตั้งในแอป (quiet hours) หน้าง่วง ไม่ชวนคุยเอง แต่ยังเตือนยา |
 | Heartbeat + ThingsBoard | heartbeat ทุก 1 นาที (แบตจาก ESP32) · telemetry ทุก 30 วิ: `battery` `charging` `paired` `online` `esp32` `person` `cpu_temp` `uptime` `mood` และ `event` (boot, paired, cmd, dose_due, dispensed, dose_taken, crisis_support …) ไม่ส่งชื่อยาหรือข้อความแชทเข้า ThingsBoard |
@@ -31,7 +33,7 @@
 - จอ (HDMI หรือ DSI เช่น 5–7 นิ้ว 800×480)
 - ไมค์ USB + ลำโพง (USB หรือ 3.5 มม. ผ่าน DAC/HAT)
 - Camera Module 3 (หรือเว็บแคม USB)
-- ESP32-S3 MedBot ที่อัปโหลด `../esp32/pebble_medbot` แล้ว ต่อด้วยสาย USB (Pi เห็นเป็น `/dev/ttyACM0`)
+- ESP32-S3 MedBot ที่อัปโหลด `../esp32/pebble_medbot` แล้ว ต่อสาย RX/TX: Pi ขา 8 (TX) → ESP32 GPIO18, Pi ขา 10 (RX) ← GPIO17, GND ↔ GND (`/dev/serial0`, `install.sh` เปิด UART ให้ ต้อง reboot) หรือสาย USB (`/dev/ttyACM0`) ก็ได้
 
 ## ติดตั้ง
 
@@ -50,7 +52,7 @@
    sudo nano /etc/pebble/config.toml      # ใส่ server.url, robot.serial, robot.secret, thingsboard.token
    sudo reboot
    ```
-   - **มี desktop:** แอปเปิดเองหลังล็อกอิน (Chromium เต็มจอ) · log อยู่ที่ `~/pebble.log`
+   - **มี desktop:** แอปเปิดเองหลังล็อกอิน (Chromium เต็มจอ) · log อยู่ที่ `~/pebble.log` · ถ้าแอปหยุดทำงาน `/opt/pebble/run-pebble.sh` เปิดใหม่ให้เองใน 3 วินาที · ไอคอน pebble บน desktop = กลับเข้าแอป
    - **Lite:** ใบหน้าหุ่นเปิดผ่าน systemd · log: `journalctl -u pebble -f`
 
 ### อัปเดตเวอร์ชันใหม่
@@ -96,8 +98,9 @@ pebble/ui/*.png      โลโก้ และรูปหุ่นในหน�
 pebble/face.py       ใบหน้าหุ่น (pygame, --ui face)
 pebble/voice.py      ไมค์ ลำโพง แปลงเสียง↔ข้อความ
 pebble/camera.py     ตรวจจับใบหน้า (OpenCV) ตำแหน่งให้ตามมอง
-pebble/ble.py        Bluetooth LE สำหรับจับคู่ (bless / BlueZ)
+pebble/ble.py        Bluetooth LE สำหรับจับคู่แบบเก่า (ปิดไว้ ค่าเริ่มต้น bluetooth = false)
 pebble/esp32.py      สาย serial ไป ESP32 (ดู ../esp32/PROTOCOL.md)
+pebble/spotify.py    Spotify Connect (spotifyd) + เพลงที่กำลังเล่น / ปุ่มควบคุม (playerctl)
 pebble/telemetry.py  MQTT ไป ThingsBoard
 install.sh           ติดตั้งบน Pi + systemd
 pebble.service       systemd unit

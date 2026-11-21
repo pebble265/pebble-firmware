@@ -20,6 +20,7 @@ class Config:
     server_url: str
     serial: str
     secret: str
+    bluetooth: bool = False  # old Bluetooth pairing; the app now pairs with the 6-digit code
     model: str = "A3120B"
     color: str = "Space Black"
     esp_port: str = "auto"
@@ -43,6 +44,8 @@ class Config:
     tb_host: str = "demo.thingsboard.io"
     tb_port: int = 1883
     tb_token: str = ""
+    spotify_enabled: bool = True
+    spotify_name: str = "pebble(a)"
     remind_every_minutes: float = 5
     give_up_after_minutes: float = 60
     extra: dict = field(default_factory=dict)
@@ -64,6 +67,7 @@ def load(path: str | None = None) -> Config:
     e, d = raw.get("esp32", {}), raw.get("display", {})
     v, c = raw.get("voice", {}), raw.get("camera", {})
     t, p = raw.get("thingsboard", {}), raw.get("dispenser", {})
+    sp = raw.get("spotify", {})
 
     url = str(s.get("url", "")).rstrip("/")
     if not url or not r.get("serial") or not r.get("secret"):
@@ -74,6 +78,7 @@ def load(path: str | None = None) -> Config:
         serial=r["serial"],
         secret=r["secret"],
         model=r.get("model", "A3120B"),
+        bluetooth=bool(r.get("bluetooth", False)),
         color=r.get("color", "Space Black"),
         esp_port=str(e.get("port", "auto")),
         esp_baud=int(e.get("baud", 115200)),
@@ -96,6 +101,8 @@ def load(path: str | None = None) -> Config:
         tb_host=t.get("host", "demo.thingsboard.io"),
         tb_port=int(t.get("port", 1883)),
         tb_token=t.get("token", ""),
+        spotify_enabled=bool(sp.get("enabled", True)),
+        spotify_name=str(sp.get("device_name", "pebble(a)"))[:40],
         remind_every_minutes=float(p.get("remind_every_minutes", 5)),
         give_up_after_minutes=float(p.get("give_up_after_minutes", 60)),
     )

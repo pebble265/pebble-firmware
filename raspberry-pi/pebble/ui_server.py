@@ -13,6 +13,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
@@ -20,7 +21,8 @@ from aiohttp import WSMsgType, web
 log = logging.getLogger("ui")
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
-ACTIONS = {"talk", "stop", "send", "take", "later", "mood", "refresh", "touch", "wave", "box"}
+ACTIONS = {"talk", "stop", "send", "take", "later", "mood", "refresh", "touch", "wave", "box", "desktop", "music", "wifiScan", "wifiConnect", "wifiClear"}
+HIDE_MINUTES = 10  # "ตั้งค่า Wi-Fi": leave the desktop free this long
 
 
 class UiServer:
@@ -29,12 +31,16 @@ class UiServer:
         self.port = port
         self.runner: web.AppRunner | None = None
         self.browser: subprocess.Popen | None = None
+        self.args: list[str] | None = None
+        self.hidden_until = 0.0        # kiosk closed on purpose until this time
+        self.hidden_offline = False    # it was closed to fix the internet: reopen once online
         self.clients: set[web.WebSocketResponse] = set()
 
     async def start(self):
         app = web.Application()
         app.router.add_get("/", self._index)
         app.router.add_get("/ws", self._ws)
+        app.router.add_get("/show", self._show)  # desktop shortcut: bring the screen back
         app.router.add_static("/static/", UI_DIR, show_index=False)
         self.runner = web.AppRunner(app, access_log=None)
         await self.runner.setup()
@@ -64,7 +70,14 @@ class UiServer:
             self.clients.discard(ws)
         return ws
 
+    async def _show(self, _req):
+        self.show_kiosk()
+        return web.Response(text="ok")
+
     async def _act(self, data: dict):
+        if data.get("a") == "desktop":
+            self.hide_kiosk()
+            return
         try:
             await self.robot.on_ui(data)
         except Exception:
@@ -111,18 +124,43 @@ class UiServer:
             "--password-store=basic",
             f"--user-data-dir={profile}",
         ]
-        self.browser = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.args = args
+        self._launch()
         log.info("opened %s in kiosk mode", Path(exe).name)
-        asyncio.create_task(self._watch_browser(args))
+        asyncio.create_task(self._watch_browser())
 
-    async def _watch_browser(self, args):
-        """Reopen the screen if the browser is closed or crashes."""
+    def _launch(self):
+        if self.args and (not self.browser or self.browser.poll() is not None):
+            self.browser = subprocess.Popen(self.args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    async def _watch_browser(self):
+        """Reopen the screen if the browser is closed or crashes (not while hidden on purpose)."""
         while True:
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
+            now = time.monotonic()
+            if self.hidden_until:
+                back_online = self.hidden_offline and self.robot.online
+                if now < self.hidden_until and not back_online:
+                    continue
+                log.info("showing the screen again (%s)", "back online" if back_online else "timeout")
+                self.hidden_until = 0
+                self._launch()
+                continue
             if self.browser and self.browser.poll() is not None:
                 log.warning("browser exited (%s): reopening", self.browser.returncode)
                 await asyncio.sleep(2)
-                self.browser = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self._launch()
+
+    def hide_kiosk(self, minutes: float = HIDE_MINUTES):
+        """Close the full-screen app so the desktop (Wi-Fi menu, keyboard) can be used."""
+        log.info("screen hidden for %s min (desktop / Wi-Fi settings)", minutes)
+        self.hidden_until = time.monotonic() + minutes * 60
+        self.hidden_offline = not self.robot.online
+        self.close_kiosk()
+
+    def show_kiosk(self):
+        self.hidden_until = 0
+        self._launch()
 
     def close_kiosk(self):
         if self.browser and self.browser.poll() is None:

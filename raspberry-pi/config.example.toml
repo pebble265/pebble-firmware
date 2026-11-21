@@ -11,10 +11,14 @@ url = "https://colonist-alkalize-duo.ngrok-free.dev"
 serial = "PBL-XXXXXXXX"
 secret = "paste-the-secret-here"
 model = "A3120B"
+# Bluetooth pairing (old way). The app pairs with the 6-digit code on the screen, so it stays off.
+bluetooth = false
 color = "Space Black"
 
 [esp32]
-# USB serial port of the ESP32. "auto" picks the first /dev/ttyUSB* or /dev/ttyACM*.
+# Serial port of the ESP32.
+# "auto" = RX/TX wires first (/dev/serial0: Pi pin 8 TX -> ESP32 GPIO18, pin 10 RX <- GPIO17, GND),
+#          then a USB cable (/dev/ttyACM*, /dev/ttyUSB*). Or set one: "/dev/serial0", "/dev/ttyACM0".
 # "sim" = no ESP32 attached (prints the commands instead).
 port = "auto"
 baud = 115200
@@ -52,6 +56,12 @@ greet_after_minutes = 30
 host = "demo.thingsboard.io"
 port = 1883
 token = ""
+
+[spotify]
+# The robot becomes a Spotify Connect speaker: in the Spotify app (Premium) on a phone
+# on the same Wi-Fi, tap the speaker icon and pick this name.
+enabled = true
+device_name = "pebble(a)"
 
 [dispenser]
 # Remind again every N minutes while a dose waits, give up after M minutes.

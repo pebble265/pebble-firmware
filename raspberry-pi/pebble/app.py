@@ -28,8 +28,10 @@ from .camera import Camera
 from .config import VERSION, Config
 from .esp32 import Esp32
 from .realtime import Realtime
+from .spotify import Spotify
 from .telemetry import Telemetry
 from .voice import Voice
+from .wifi import Wifi
 
 log = logging.getLogger("pebble")
 
@@ -59,6 +61,33 @@ def local_ip() -> str:
             return s.getsockname()[0]
     except OSError:
         return "-"
+
+
+_wifi_cache: tuple[float, str | None] = (0.0, None)
+
+
+def wifi_name() -> str | None:
+    """Name of the Wi-Fi the Pi is on (None = not connected). Cached for 10 s."""
+    global _wifi_cache
+    if time.monotonic() - _wifi_cache[0] < 10:
+        return _wifi_cache[1]
+    name = None
+    try:
+        import subprocess
+
+        try:
+            out = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2).stdout.strip()
+        except FileNotFoundError:
+            out = ""
+        if not out:  # Raspberry Pi OS Bookworm: NetworkManager
+            res = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+                                 capture_output=True, text=True, timeout=3).stdout
+            out = next((line.split(":", 1)[1] for line in res.splitlines() if line.startswith("yes:")), "")
+        name = out.replace("\\:", ":") or None
+    except Exception:
+        name = None
+    _wifi_cache = (time.monotonic(), name)
+    return name
 
 
 def cpu_temp() -> float | None:
@@ -111,6 +140,10 @@ class Robot:
         self.camera = Camera(cfg.camera_enabled, self._on_arrive_thread)
         self.ble = PairingBle(cfg.serial, cfg.model, cfg.color, VERSION)
         self.realtime = Realtime(self.api, self._on_realtime)
+        self.spotify = Spotify(cfg.spotify_enabled, cfg.spotify_name)
+        self.wifi = Wifi()
+        self.net_wake = asyncio.Event()       # set after joining a Wi-Fi: retry the server right away
+        self.wifi.on_connected = self._on_wifi_connected
 
         self.loop: asyncio.AbstractEventLoop | None = None
         self.started = time.monotonic()
@@ -121,7 +154,8 @@ class Robot:
         self.activity_until = 0.0
         self.caption = ""                     # last thing said (subtitle)
         self.pair_code: str | None = None
-        self.pair_expires: datetime | None = None
+        self.pair_deadline = 0.0              # time.monotonic() when the code expires (immune to a wrong Pi clock)
+        self.pair_error: str | None = None    # why there is no code yet (shown instead of a bare spinner)
         self.messages: list[dict] = []        # current conversation, for the screen
         self.crisis_contacts: list[dict] | None = None
         self.doses: list[dict] = []           # today's doses (from the backend)
@@ -146,6 +180,7 @@ class Robot:
         self.move_task: asyncio.Task | None = None
         self.info_until = 0.0
         self._face_last: str | None = None
+        self.emoji_until = 0.0                # LED panel shows a check-in emoji until then (faces wait)
         self._stop = threading.Event()
 
     # ================================================================ start / stop
@@ -172,6 +207,7 @@ class Robot:
             asyncio.create_task(self._telemetry_loop(), name="telemetry"),
             asyncio.create_task(self._ui_loop(), name="ui"),
             asyncio.create_task(self._head_follow(), name="head"),
+            asyncio.create_task(self.spotify.run_forever(), name="spotify"),
             *[asyncio.create_task(c) for c in extra_tasks],
         ]
         if self.text_mode:
@@ -185,6 +221,7 @@ class Robot:
             await asyncio.gather(*tasks, return_exceptions=True)
             self.esp.stop()
             self.camera.stop()
+            self.spotify.stop()
             await self.ble.stop()
             if self.conversation_id:
                 try:
@@ -213,8 +250,17 @@ class Robot:
                 if self.online:
                     log.warning("backend unreachable: %s", e)
                 self.online = False
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, 60)
+                self.net_wake.clear()
+                try:
+                    await asyncio.wait_for(self.net_wake.wait(), delay)
+                    delay = 3
+                except asyncio.TimeoutError:
+                    delay = min(delay * 2, 60)
+
+    def _on_wifi_connected(self):
+        global _wifi_cache
+        _wifi_cache = (0.0, None)  # show the new name right away
+        self.net_wake.set()
 
     async def _refresh_profile(self):
         try:
@@ -256,48 +302,88 @@ class Robot:
         self.toast = (text, time.monotonic() + seconds)
 
     # ================================================================ pairing
+    PAIR_POLL_S = 4          # while unpaired: how often to ask "has someone typed my code?"
+    PAIR_RENEW_BEFORE_S = 30  # fetch a new code this long before the old one expires
+
+    def _clear_code(self):
+        self.pair_code = None
+        self.pair_deadline = 0.0
+        self.pair_error = None
+
     async def _pairing(self):
-        """Shows a code + advertises over Bluetooth until someone pairs, then watches for unpairing."""
-        was_paired = None
-        code_expires = datetime.min.replace(tzinfo=timezone.utc)
+        """Keeps a valid 6-digit code on screen while unpaired, and notices pairing/unpairing at once.
+
+        - a new code is requested immediately after unpairing (the old one was wiped by the server)
+        - expiry is tracked with time.monotonic() + the TTL measured against the server clock,
+          so a Pi with a wrong clock neither spams new codes nor shows an expired one
+        - heartbeat/me() flipping `paired` wakes this loop right away
+        """
+        was_paired: bool | None = None
+        fails = 0
         while True:
+            wait = self.PAIR_POLL_S
             try:
+                self.api.paired_changed.clear()
                 await self.api.ensure_token()
                 await self._refresh_profile()
                 paired = self.api.paired
-                if paired and was_paired is not True:
-                    await self.ble.stop()
-                    self.pair_code = None
-                    self.telemetry.event("paired", self.owner_name())
-                    asyncio.create_task(self._check_doses())
-                    asyncio.create_task(self._load_mood())
-                    asyncio.create_task(self.greet(first_time=was_paired is False))
-                elif not paired:
+                if paired:
+                    if was_paired is not True:
+                        await self.ble.stop()
+                        self._clear_code()
+                        self.telemetry.event("paired", self.owner_name())
+                        asyncio.create_task(self._check_doses())
+                        asyncio.create_task(self._load_mood())
+                        asyncio.create_task(self.greet(first_time=was_paired is False))
+                    wait = 15  # fallback poll; normally "robot:unpaired" arrives over the socket
+                else:
                     if was_paired:
+                        log.info("unpaired -> asking for a new code")
                         self.telemetry.event("unpaired")
                         self.doses, self.mood_today, self.pending = [], None, None
                         self.messages, self.crisis_contacts = [], None
-                    if datetime.now(timezone.utc) >= code_expires:
+                        self._clear_code()
+                    if not self.pair_code or time.monotonic() >= self.pair_deadline - self.PAIR_RENEW_BEFORE_S:
                         try:
                             res = await self.api.pairing_code()
-                            self.pair_code = res["code"]
-                            self.pair_expires = parse_time(res["expiresAt"])
-                            code_expires = self.pair_expires - timedelta(seconds=20)
-                            self.ble.set_code(self.pair_code)
-                            log.info("pairing code %s", self.pair_code)
                         except ApiError as e:
-                            if e.status == 409:
-                                await asyncio.sleep(2)
+                            if e.status == 409 and "paired" in str(e).lower():
+                                self.api.paired = True  # server already has an owner -> handle it next turn
+                                was_paired = paired
+                                await asyncio.sleep(1)
                                 continue
                             raise
-                    await self.ble.start()
+                        server_now = time.time() + self.api.clock_skew
+                        ttl = parse_time(res["expiresAt"]).timestamp() - server_now
+                        ttl = min(max(ttl, 90), 15 * 60)
+                        self.pair_code = str(res["code"])
+                        self.pair_deadline = time.monotonic() + ttl
+                        self.pair_error = None
+                        log.info("pairing code %s (valid %ds, clock skew %+.0fs)", self.pair_code, ttl, self.api.clock_skew)
+                        if self.cfg.bluetooth:
+                            self.ble.set_code(self.pair_code)
+                    if self.cfg.bluetooth:
+                        await self.ble.start()
                 was_paired = paired
-                await asyncio.sleep(5 if not paired else 60)
+                fails = 0
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning("pairing loop: %s", e)
-                await asyncio.sleep(5)
+                fails += 1
+                log.warning("pairing loop (%d): %s", fails, e)
+                if isinstance(e, ApiError):
+                    self.pair_error = f"เซิร์ฟเวอร์ตอบกลับผิดพลาด ({e.status})"
+                elif isinstance(e, asyncio.TimeoutError):
+                    self.pair_error = "เซิร์ฟเวอร์ตอบช้า"
+                else:
+                    self.pair_error = "ติดต่อเซิร์ฟเวอร์ไม่ได้"
+                if self.pair_code and time.monotonic() >= self.pair_deadline:
+                    self.pair_code = None  # don't keep showing a code that no longer works
+                wait = min(2 * fails, 10)
+            try:
+                await asyncio.wait_for(self.api.paired_changed.wait(), timeout=wait)
+            except asyncio.TimeoutError:
+                pass
 
     # ================================================================ events in
     def _on_esp(self, evt: dict):
@@ -330,6 +416,9 @@ class Robot:
     async def _on_realtime(self, event: str, data: dict):
         if event == "robot:command":
             await self.on_command(str(data.get("action", "")))
+        elif event in ("robot:paired", "robot:unpaired"):
+            log.info("server says %s", event)
+            self.api.paired = event == "robot:paired"  # wakes the pairing loop
         elif event == "dose:due":
             log.info("dose due %s", data.get("doseId"))
             await self._check_doses(prefer=data.get("doseId"))
@@ -387,6 +476,16 @@ class Robot:
             self.set_activity("happy", 2.5)
         elif a == "box":
             self.esp.box_cmd("toggle")
+        elif a == "wifiScan":
+            asyncio.create_task(self.wifi.scan())
+        elif a == "wifiConnect":
+            ssid = str(msg.get("ssid", ""))[:64]
+            pw = str(msg.get("pw", ""))[:64]
+            asyncio.create_task(self.wifi.connect(ssid, pw))
+        elif a == "wifiClear":
+            self.wifi.result = None
+        elif a == "music":
+            await self.spotify.command(str(msg.get("do", "toggle")))
         elif a == "touch":
             pass  # just wakes the screen (last_interaction above)
 
@@ -402,9 +501,21 @@ class Robot:
         self.voice.stop_speaking()
         self.voice.cancel_listening()
 
+    EMOJI_HOLD_S = 6
+
+    def show_emoji(self, score: int):
+        """Send the tapped emoji to the robot's LED face (ESP32, over RX/TX) and hold it a few seconds."""
+        if not self.esp.connected:
+            log.info("emoji %d: ESP32 not connected", score)
+            return
+        self.esp.emoji(score, int(self.EMOJI_HOLD_S * 1000))
+        self.emoji_until = time.monotonic() + self.EMOJI_HOLD_S
+        self._face_last = None  # put the normal face back once the emoji is done
+
     async def check_in(self, score: int):
         if not 1 <= score <= 7:
             return
+        self.show_emoji(score)  # right away, even before the server answers (works offline too)
         prev = self.mood_today
         self.mood_today = score
         try:
@@ -559,6 +670,7 @@ class Robot:
                 self.chat_end_task.cancel()
             self.talk_cancel = False
             self.in_conversation = True
+            await self.spotify.duck()
             self.voice.reset_cancel()
             misses = 0
             try:
@@ -606,6 +718,7 @@ class Robot:
                         break
             finally:
                 self.in_conversation = False
+                await self.spotify.resume()
                 self.set_activity(None)
                 self.caption = ""
                 self.talk_cancel = False
@@ -712,8 +825,10 @@ class Robot:
             else:
                 text = f"อย่าลืมกินยา {name} นะ"
             async with self.talk_lock:
+                await self.spotify.duck()
                 await self.say(text.strip())
                 self.caption = ""
+                await self.spotify.resume()
             first = False
             await asyncio.sleep(self.cfg.remind_every_minutes * 60)
 
@@ -819,8 +934,8 @@ class Robot:
         if self.pending and time.monotonic() >= self.alert_hidden_until:
             pending = {**self._dose_view(self.pending), "dispensed": bool(self.pending.get("dispensed"))}
         expires_in = None
-        if self.pair_expires:
-            expires_in = max(0, int((self.pair_expires - datetime.now(timezone.utc)).total_seconds()))
+        if self.pair_code:
+            expires_in = max(0, int(self.pair_deadline - time.monotonic()))
         return {
             "mode": mode,
             "mood": mood,
@@ -830,7 +945,8 @@ class Robot:
             "greeting": self.greeting_part(),
             "owner": self.owner_name(),
             "robotName": self.settings().get("robotName") or "Pebble",
-            "pair": {"code": self.pair_code, "expiresIn": expires_in} if mode == "pairing" else None,
+            "wifiSetup": self.wifi.view(),
+            "pair": {"code": self.pair_code, "expiresIn": expires_in, "error": self.pair_error} if mode == "pairing" else None,
             "doses": [self._dose_view(d) for d in sorted(self.doses, key=lambda d: d["scheduledAt"])],
             "pending": pending,
             "moodToday": self.mood_today,
@@ -843,6 +959,7 @@ class Robot:
                 "crisis": self.crisis_contacts,
             },
             "level": round(self.voice.level, 2),
+            "music": self.spotify.view(),
             "sleep": mood == "sleepy" and not talking and not self.pending,
             "idleSeconds": int(time.monotonic() - self.last_interaction),
             "toast": toast,
@@ -852,6 +969,7 @@ class Robot:
                 "charging": self.esp.charging,
                 "esp32": self.esp.connected,
                 "espFw": self.esp.fw,
+                "espLink": self.esp.link,
                 "box": self.esp.box,
                 "dist": self.esp.dist,
                 "hasBox": self.esp.has("box"),
@@ -860,6 +978,7 @@ class Robot:
                 "person": self.camera.present,
                 "voice": self.voice.available,
                 "ip": local_ip(),
+                "wifi": wifi_name(),
                 "serial": self.cfg.serial,
                 "version": VERSION,
                 "server": self.cfg.server_url.split("//")[-1],
@@ -872,7 +991,7 @@ class Robot:
         while True:
             mood = self.current_mood()
             face = mood if mood in FACE_MOODS else "idle"
-            if face != self._face_last and self.esp.connected:
+            if face != self._face_last and self.esp.connected and time.monotonic() >= self.emoji_until:
                 self.esp.face(face)
                 self._face_last = face
             if self.face is not None:
@@ -899,7 +1018,7 @@ class Robot:
         if mood == "pairing":
             code = self.pair_code
             s.big_text = f"{code[:3]} {code[3:]}" if code else ""
-            s.sub_text = "เปิดแอป Pebble แล้วเลือก “เพิ่มหุ่น” หรือพิมพ์รหัสนี้"
+            s.sub_text = "เปิดแอป Pebble แล้วพิมพ์รหัสนี้ในหน้า “Enter your code”"
             if not code:
                 s.caption = "กำลังขอรหัสจับคู่…"
         elif mood == "alert" and self.pending:

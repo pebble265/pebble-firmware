@@ -1,4 +1,4 @@
-"""Socket.IO client for ws://<server>/realtime (robot:command, dose:due)."""
+"""Socket.IO client for ws://<server>/realtime (robot:command, dose:due, robot:paired/unpaired)."""
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +41,7 @@ class Realtime:
             log.warning("server error %s", data)
             self.api.token = None  # probably an expired token: log in again
 
-        for event in ("robot:command", "dose:due", "alert"):
+        for event in ("robot:command", "dose:due", "alert", "robot:paired", "robot:unpaired"):
             self.sio.on(event, self._forward(event), namespace=ns)
 
     def _forward(self, event: str):

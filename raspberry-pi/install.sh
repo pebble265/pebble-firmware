@@ -23,6 +23,25 @@ sudo -u "$RUN_USER" python3 -m venv --system-site-packages "$APP/.venv"
 sudo -u "$RUN_USER" "$APP/.venv/bin/pip" install --upgrade pip
 sudo -u "$RUN_USER" "$APP/.venv/bin/pip" install -r "$APP/requirements.txt"
 
+echo "==> Spotify Connect (spotifyd + playerctl)"
+apt-get install -y playerctl libpulse0 libdbus-1-3 curl || true
+case "$(uname -m)" in
+  aarch64) SP_ARCH=aarch64 ;;
+  armv7l|armhf) SP_ARCH=armv7 ;;
+  *) SP_ARCH="" ;;
+esac
+if [[ -n "$SP_ARCH" && ! -x "$APP/bin/spotifyd" ]]; then
+  mkdir -p "$APP/bin"
+  if curl -fsSL "https://github.com/Spotifyd/spotifyd/releases/latest/download/spotifyd-linux-$SP_ARCH-full.tar.gz" -o /tmp/spotifyd.tgz; then
+    rm -rf /tmp/spotifyd-x && mkdir -p /tmp/spotifyd-x && tar -xzf /tmp/spotifyd.tgz -C /tmp/spotifyd-x
+    SP_BIN="$(find /tmp/spotifyd-x -type f -name spotifyd | head -1)"   # at the top or inside a folder
+    if [[ -n "$SP_BIN" ]]; then install -m 755 "$SP_BIN" "$APP/bin/spotifyd" && echo "   spotifyd พร้อมแล้ว"; fi
+    chown -R "$RUN_USER:$RUN_USER" "$APP/bin"
+  else
+    echo "   !! ดาวน์โหลด spotifyd ไม่ได้ (ข้าม Spotify ไปก่อน รัน install.sh ใหม่ภายหลังได้)"
+  fi
+fi
+
 echo "==> config"
 mkdir -p /etc/pebble
 if [[ ! -f /etc/pebble/config.toml ]]; then
@@ -33,9 +52,53 @@ chown "$RUN_USER:$RUN_USER" /etc/pebble/config.toml
 chmod 600 /etc/pebble/config.toml
 
 echo "==> permissions for $RUN_USER (screen, input, audio, ESP32 serial, Bluetooth)"
-usermod -aG video,render,input,audio,dialout,bluetooth "$RUN_USER"
+usermod -aG video,render,input,audio,dialout,bluetooth,netdev "$RUN_USER"
+
+echo "==> let the app set up Wi-Fi from its own screen (NetworkManager, no password prompt)"
+mkdir -p /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/50-pebble-wifi.rules <<RULES
+// pebble(a): the touch app (user $RUN_USER) may scan and join Wi-Fi networks
+polkit.addRule(function(action, subject) {
+  if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 && subject.user == "$RUN_USER") {
+    return polkit.Result.YES;
+  }
+});
+RULES
+systemctl restart polkit 2>/dev/null || true
+
+echo "==> serial port on GPIO14/15 (RX/TX wires to the ESP32 LED face / motors)"
+# turn the UART on, and stop Linux using it as a login console (it would eat the robot's messages)
+BOOT=/boot/firmware; [[ -d $BOOT ]] || BOOT=/boot
+if command -v raspi-config >/dev/null; then
+  raspi-config nonint do_serial_hw 0 || true    # 0 = enable serial hardware
+  raspi-config nonint do_serial_cons 1 || true  # 1 = no login shell on serial
+fi
+if [[ -f $BOOT/config.txt ]]; then
+  grep -q '^enable_uart=1' $BOOT/config.txt || echo 'enable_uart=1' >> $BOOT/config.txt
+  grep -q '^dtparam=uart0=on' $BOOT/config.txt || echo 'dtparam=uart0=on' >> $BOOT/config.txt   # Pi 5: GPIO14/15
+fi
+if [[ -f $BOOT/cmdline.txt ]]; then
+  sed -i -E 's/ ?console=(serial0|ttyAMA0|ttyS0),[0-9]+//g' $BOOT/cmdline.txt
+fi
+systemctl disable --now serial-getty@ttyAMA0.service serial-getty@serial0.service 2>/dev/null || true
+echo "   ต่อสาย: Pi ขา 8 (TX) -> ESP32 GPIO18 | Pi ขา 10 (RX) <- ESP32 GPIO17 | GND -> GND  (ต้อง reboot 1 ครั้ง)"
 
 HOME_DIR="$(getent passwd "$RUN_USER" | cut -d: -f6)"
+
+# keeps the app running: if it ever stops or crashes, start it again (only one copy at a time)
+cat > /opt/pebble/run-pebble.sh <<'RUN'
+#!/bin/sh
+exec 9>/tmp/pebble-app.lock
+flock -n 9 || exit 0   # already running
+cd /opt/pebble || exit 1
+while true; do
+  echo "---- start $(date)" >> "$HOME/pebble.log"
+  .venv/bin/python -m pebble >> "$HOME/pebble.log" 2>&1
+  echo "---- stopped with code $? $(date), restarting in 3 s" >> "$HOME/pebble.log"
+  sleep 3
+done
+RUN
+chmod 755 /opt/pebble/run-pebble.sh
 if [[ "$(systemctl get-default)" == "graphical.target" ]]; then
   echo "==> desktop found: touch-screen app opens at login (Chromium kiosk)"
   apt-get install -y chromium-browser || apt-get install -y chromium || true
@@ -45,9 +108,23 @@ if [[ "$(systemctl get-default)" == "graphical.target" ]]; then
 [Desktop Entry]
 Type=Application
 Name=pebble
-Exec=sh -c "cd /opt/pebble && exec .venv/bin/python -m pebble >> \$HOME/pebble.log 2>&1"
+Exec=/opt/pebble/run-pebble.sh
 DESKTOP
   chown "$RUN_USER:$RUN_USER" "$HOME_DIR/.config/autostart/pebble.desktop"
+  # desktop icon: bring the app screen back after "ตั้งค่า Wi-Fi"
+  sudo -u "$RUN_USER" mkdir -p "$HOME_DIR/Desktop"
+  cat > "$HOME_DIR/Desktop/pebble.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=pebble
+Comment=เปิดหน้าจอแอป pebble
+Icon=/opt/pebble/pebble/ui/logo-mark.png
+Exec=sh -c "curl -sf http://127.0.0.1:8787/show || (sleep 4; curl -sf http://127.0.0.1:8787/show) || /opt/pebble/run-pebble.sh"
+Terminal=false
+DESKTOP
+  chown "$RUN_USER:$RUN_USER" "$HOME_DIR/Desktop/pebble.desktop"
+  chmod +x "$HOME_DIR/Desktop/pebble.desktop"
+  apt-get install -y curl >/dev/null || true
   START_HINT="sudo reboot   (แอปจะเปิดเองหลังล็อกอิน · log: ~/pebble.log)"
 else
   echo "==> no desktop (Lite): robot face via systemd"

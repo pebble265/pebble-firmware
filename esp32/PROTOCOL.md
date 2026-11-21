@@ -1,6 +1,15 @@
 # Pi ⇄ ESP32 (MedBot) protocol
 
-สาย USB ระหว่าง Raspberry Pi 5 กับ ESP32-S3 (Pi เห็นเป็น `/dev/ttyACM0`), 115200 baud
+สาย RX/TX (UART) ระหว่าง Raspberry Pi 5 กับ ESP32-S3, 115200 baud 8N1 — Pi ใช้ `/dev/serial0`
+หรือสาย USB (Pi เห็นเป็น `/dev/ttyACM0`) ก็ได้ ข้อความเหมือนกันทั้งสองทาง ESP32 ตอบออกทั้งสองสาย
+
+| Raspberry Pi 5 | ESP32-S3 |
+|---|---|
+| ขา 8 (GPIO14 TX) | GPIO18 (RX) |
+| ขา 10 (GPIO15 RX) | GPIO17 (TX) |
+| ขา 6 (GND) | GND |
+
+ไฟ 3.3 V ทั้งคู่ ต่อตรงได้ไม่ต้องมีตัวแปลงระดับ (ห้ามต่อ 5 V เข้าขา RX/TX)
 **JSON หนึ่งออบเจกต์ต่อหนึ่งบรรทัด** (`\n`) บรรทัดที่ไม่ได้ขึ้นต้นด้วย `{` เป็น log/เมนูทดสอบ Pi จะไม่สนใจ
 เมนูทดสอบแบบเดิม (พิมพ์ `1` `2` … ใน Serial Monitor) ยังใช้ได้เหมือนเดิม
 
@@ -15,6 +24,7 @@
 | `dispense` | `{"cmd":"dispense","slot":1,"id":"<doseId>"}` | ดันยาลงกล่อง (MED_2) → เลื่อนกล่องออก (MED_1) → ตอบ `dispensed` |
 | `box` | `{"cmd":"box","do":"open"}` | `open` / `close` / `toggle` |
 | `arm` | `{"cmd":"arm","do":"wave"}` | `wave` โบกมือ · `home` · `{"do":"angle","angle":120}` |
+| `emoji` | `{"cmd":"emoji","score":7,"ms":6000}` | อีโมจิที่แตะเช็กอินความรู้สึกบนจอ Pi (1 😭 2 🥹 3 😢 4 😌 5 ☺️ 6 😊 7 🥰) ค้างไว้ `ms` แล้วกลับหน้าเดิม (`ms`:0 = ค้างไว้จนมีคำสั่งหน้าใหม่) |
 | `face` | `{"cmd":"face","mood":"happy"}` | หน้าบนแผง LED 16x16 ตามอารมณ์ (ดู `MOOD_FACES` ใน .ino) หรือ `{"anim":"excited_2","loops":2}` |
 | `buzz` | `{"cmd":"buzz","mode":"double"}` | `beep` `double` `alarm` `off` |
 | `fan` | `{"cmd":"fan","on":true}` | พัดลม |

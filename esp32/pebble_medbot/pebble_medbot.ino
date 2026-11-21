@@ -75,7 +75,39 @@ static void buildFallbackFace() {  // ตาสีฟ้า 2 ข้าง: เ�
 #include <Adafruit_VL53L0X.h>
 #endif
 
-#define PEBBLE_FW "medbot-2.0.0"
+#include "emoji_faces.h"  // อีโมจิ 7 แบบ (เช็กอินความรู้สึกบนจอ Pi) สำหรับจอ LED
+
+#define PEBBLE_FW "medbot-2.1.0"
+
+// ===================== สาย RX/TX ไป Raspberry Pi =====================
+// Pi ขา 8 (GPIO14 TX)  -> ESP32 PIN_PI_RX
+// Pi ขา 10 (GPIO15 RX) <- ESP32 PIN_PI_TX
+// Pi ขา 6 (GND)        -- ESP32 GND   (ไฟ 3.3V ทั้งคู่ ต่อตรงได้เลย)
+// ยังคุยผ่านสาย USB ได้เหมือนเดิม (ใช้ทดสอบ / อัปโหลดโค้ด) ตอบกลับทั้งสองทาง
+#define PI_UART 1             // 0 = ใช้แค่สาย USB
+const int PIN_PI_RX = 18;
+const int PIN_PI_TX = 17;
+const uint32_t PI_UART_BAUD = 115200;
+
+// ข้อความ JSON ถึง Pi: ส่งออกทั้ง USB และสาย RX/TX
+class PiTee : public Print {
+ public:
+  size_t write(uint8_t c) override {
+    Serial.write(c);
+#if PI_UART
+    Serial1.write(c);
+#endif
+    return 1;
+  }
+  size_t write(const uint8_t* buf, size_t n) override {
+    Serial.write(buf, n);
+#if PI_UART
+    Serial1.write(buf, n);
+#endif
+    return n;
+  }
+};
+PiTee PiOut;
 
 // ============================ ขา ============================
 const int PIN_TOUCH_BOX = 4;
@@ -223,6 +255,7 @@ char boxBy[8] = "menu";  // ใครสั่งกล่อง: touch / pi / m
 void sendBox(const char* state);
 void sendStatus();
 
+const char* piVia = "usb";  // สายที่ Pi ส่งคำสั่งมาล่าสุด: "usb" หรือ "uart"
 bool piLinked() { return lastPiAt && (millis() - lastPiAt) < PI_LINK_TIMEOUT_MS; }
 
 // ============================ เมนู =============================
@@ -290,7 +323,7 @@ void wheelsStop() {
 }
 
 void sendObstacle() {
-  if (piLinked()) Serial.printf("{\"evt\":\"obstacle\",\"mm\":%d}\n", distMm);
+  if (piLinked()) PiOut.printf("{\"evt\":\"obstacle\",\"mm\":%d}\n", distMm);
 }
 
 void wheelsMove(int l, int r, bool forward) {
@@ -465,6 +498,21 @@ uint32_t rgb565to888(uint16_t c) {
   return Adafruit_NeoPixel::Color((r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2));
 }
 
+// ---------- อีโมจิจากการเช็กอินความรู้สึกบนจอ Pi ----------
+int emojiShown = -1;        // 0..6 = กำลังโชว์อีโมจิ, -1 = ไม่มี
+uint32_t emojiUntil = 0;    // 0 = ค้างไว้จนมีคำสั่งหน้าใหม่
+
+void emojiShow(int score, uint32_t holdMs) {  // score 1..7 (เหมือนในแอป)
+  if (score < 1 || score > 7) return;
+  emojiShown = score - 1;
+  emojiUntil = holdMs ? millis() + holdMs : 0;
+  for (int y = 0; y < 16 && y < PANEL_H; y++)
+    for (int x = 0; x < 16 && x < PANEL_W; x++)
+      ledFront.setPixelColor(panelXY(x, y), rgb565to888(EMOJI_FACES[emojiShown][y * 16 + x]));
+  ledFront.show();
+  Serial.printf("จอ LED: อีโมจิ %d %s\n", score, EMOJI_NAMES[emojiShown]);
+}
+
 void ledDrawFrame(uint16_t f) {
   for (int y = 0; y < MOCHI_SIZE && y < PANEL_H; y++)
     for (int x = 0; x < MOCHI_SIZE && x < PANEL_W; x++)
@@ -474,6 +522,7 @@ void ledDrawFrame(uint16_t f) {
 
 // idx < 0 = ปิดจอ, loops = 0 -> เล่นวนไม่หยุด, มากกว่า 0 -> เล่น N รอบแล้วกลับไปท่าปกติ
 void ledPlay(int idx, uint16_t loops) {
+  emojiShown = -1;  // หน้าใหม่มาแทนอีโมจิ
   if (idx >= MOCHI_ANIM_COUNT) idx = 0;
   ledAnim = idx;
   ledFrame = 0;
@@ -489,8 +538,14 @@ void ledPlay(int idx, uint16_t loops) {
 }
 
 void ledUpdate() {
-  if (ledAnim < 0) return;
   uint32_t now = millis();
+  if (emojiShown >= 0) {  // โชว์อีโมจิค้างไว้ หมดเวลาแล้วกลับไปหน้าเดิม
+    if (!emojiUntil || (int32_t)(now - emojiUntil) < 0) return;
+    emojiShown = -1;
+    ledNextAt = 0;
+    if (ledAnim < 0) { ledFront.clear(); ledFront.show(); }
+  }
+  if (ledAnim < 0) return;
   if ((int32_t)(now - ledNextAt) < 0) return;
   const MochiAnim& an = MOCHI_ANIMS[ledAnim];
   uint16_t f = an.start + ledFrame;
@@ -618,28 +673,28 @@ long jInt(const String& s, const char* key, long def) {
 
 void sendBox(const char* state) {
   bool done = !strcmp(state, "open") || !strcmp(state, "closed");
-  if (piLinked()) Serial.printf("{\"evt\":\"box\",\"state\":\"%s\",\"by\":\"%s\"}\n", state, boxBy);
+  if (piLinked()) PiOut.printf("{\"evt\":\"box\",\"state\":\"%s\",\"by\":\"%s\"}\n", state, boxBy);
   if (done) strcpy(boxBy, "menu");  // จบการเลื่อนแล้ว: ครั้งหน้าค่อยบอกใหม่ว่าใครสั่ง
 }
 
 void sendStatus() {
   const char* bs[] = {"closed", "opening", "open", "closing"};
   int mv = batteryMv();
-  Serial.print("{\"evt\":\"status\",");
-  if (mv > 500) Serial.printf("\"battery\":%d,\"battMv\":%d,", batteryPercent(), mv);
-  Serial.printf("\"charging\":false,\"box\":\"%s\",\"dist\":%d,\"tof\":%s,\"fan\":%s,\"anim\":\"%s\"}\n",
+  PiOut.print("{\"evt\":\"status\",");
+  if (mv > 500) PiOut.printf("\"battery\":%d,\"battMv\":%d,", batteryPercent(), mv);
+  PiOut.printf("\"charging\":false,\"box\":\"%s\",\"dist\":%d,\"tof\":%s,\"fan\":%s,\"anim\":\"%s\"}\n",
                 bs[boxState], distMm, tofOk ? "true" : "false", fanOn ? "true" : "false",
                 ledAnim < 0 ? "off" : MOCHI_ANIMS[ledAnim].name);
 }
 
 void sendHello() {
-  Serial.printf("{\"evt\":\"hello\",\"fw\":\"%s\",\"board\":\"esp32s3-medbot\",\"slots\":1,\"mochi\":%s,"
-                "\"caps\":[\"wheels\",\"box\",\"pusher\",\"arm\",\"face\",\"buzzer\",\"fan\",\"tof\"]}\n",
-                PEBBLE_FW, HAVE_MOCHI ? "true" : "false");
+  PiOut.printf("{\"evt\":\"hello\",\"fw\":\"%s\",\"board\":\"esp32s3-medbot\",\"slots\":1,\"mochi\":%s,"
+                "\"caps\":[\"wheels\",\"box\",\"pusher\",\"arm\",\"face\",\"emoji\",\"buzzer\",\"fan\",\"tof\"],\"link\":\"%s\"}\n",
+                PEBBLE_FW, HAVE_MOCHI ? "true" : "false", piVia);
 }
 
 void sendDispensed(bool ok, const char* why) {
-  Serial.printf("{\"evt\":\"dispensed\",\"slot\":%d,\"id\":\"%s\",\"ok\":%s%s%s%s}\n", dispSlot, dispId.c_str(),
+  PiOut.printf("{\"evt\":\"dispensed\",\"slot\":%d,\"id\":\"%s\",\"ok\":%s%s%s%s}\n", dispSlot, dispId.c_str(),
                 ok ? "true" : "false", why[0] ? ",\"msg\":\"" : "", why, why[0] ? "\"" : "");
 }
 
@@ -694,7 +749,7 @@ void dispenseUpdate() {
 void handlePi(const String& s) {
   lastPiAt = millis();
   String cmd = jStr(s, "cmd");
-  if (cmd == "ping") { Serial.println("{\"evt\":\"pong\"}"); }
+  if (cmd == "ping") { PiOut.println("{\"evt\":\"pong\"}"); }
   else if (cmd == "status") { sendStatus(); }
   else if (cmd == "hello") { sendHello(); sendStatus(); }
   else if (cmd == "move") { piMove(jStr(s, "dir", "stop"), jInt(s, "speed", 60)); }
@@ -717,6 +772,7 @@ void handlePi(const String& s) {
     if (anim.length()) { int i = findAnim(anim.c_str()); if (i >= 0) ledPlay(i, jInt(s, "loops", 0)); }
     else faceForMood(jStr(s, "mood", "idle"));
   }
+  else if (cmd == "emoji") { emojiShow(jInt(s, "score", 0), jInt(s, "ms", 6000)); }
   else if (cmd == "brightness") { ledBrightness = constrain(jInt(s, "value", ledBrightness), 0, 255); ledFront.setBrightness(ledBrightness); }
   else if (cmd == "buzz" || cmd == "beep") {
     String m = jStr(s, "mode", "beep");
@@ -726,7 +782,7 @@ void handlePi(const String& s) {
   else if (cmd == "fan") { fanSet(jStr(s, "on", "true") == "true"); }
   else if (cmd == "stop") { stopAll(); }
   else if (cmd == "head") { /* หุ่นรุ่นนี้ไม่มีหัวหมุน: เงียบไว้ */ }
-  else { Serial.printf("{\"evt\":\"error\",\"msg\":\"unknown cmd %s\"}\n", cmd.c_str()); }
+  else { PiOut.printf("{\"evt\":\"error\",\"msg\":\"unknown cmd %s\"}\n", cmd.c_str()); }
 }
 
 void piUpdate() {
@@ -734,7 +790,7 @@ void piUpdate() {
   // ความปลอดภัย: Pi เงียบ (สายหลุด / Pi ค้าง) ระหว่างที่ Pi สั่งล้ออยู่ -> หยุด
   if (piDriving && lastPiAt && now - lastPiAt > PI_LINK_TIMEOUT_MS) {
     wheelsStop();
-    Serial.println("{\"evt\":\"error\",\"msg\":\"lost the Pi: stopped\"}");
+    PiOut.println("{\"evt\":\"error\",\"msg\":\"lost the Pi: stopped\"}");
   }
   if (piDriving && !driving) piDriving = false;
   if (piLinked() && now - lastStatusAt > STATUS_EVERY_MS) {
@@ -816,6 +872,7 @@ void printMenu() {
       Serial.println("--- จอ LED ---");
       for (int i = 0; i < MOCHI_ANIM_COUNT; i++) Serial.printf(" %2d %s\n", i, MOCHI_ANIMS[i].name);
       Serial.println(" <เลข> เล่นอนิเมชัน | n ถัดไป | o ปิดจอ | br <0-255> ความสว่าง");
+      Serial.println(" e1..e7 อีโมจิ (1 😭 2 🥹 3 😢 4 😌 5 ☺️ 6 😊 7 🥰) ค้าง 6 วิ");
       break;
     case M_SENSOR:
       Serial.println("--- เซ็นเซอร์ ---");
@@ -838,7 +895,7 @@ void enter(MenuState m) { menuState = m; printMenu(); }
 
 void handleLine(String s) {
   s.trim();
-  if (s.startsWith("{")) { handlePi(s); return; }  // คำสั่งจาก Raspberry Pi
+  if (s.startsWith("{")) { piVia = "usb"; handlePi(s); return; }  // คำสั่งจาก Raspberry Pi
   s.toLowerCase();
   if (s == "x" || s == "stop") { stopAll(); return; }
   if (s == "m") { enter(M_MAIN); return; }
@@ -917,6 +974,7 @@ void handleLine(String s) {
     case M_LED:
       if (s == "n") ledNext();
       else if (s == "o") ledPlay(-1, 0);
+      else if (s.length() == 2 && s[0] == 'e') emojiShow(s[1] - '0', 6000);
       else if (s.startsWith("br")) {
         ledBrightness = constrain(argInt(s, ledBrightness), 0, 255);
         ledFront.setBrightness(ledBrightness);
@@ -935,6 +993,25 @@ void handleLine(String s) {
       break;
   }
 }
+
+#if PI_UART
+String uartLine;
+void uartUpdate() {  // คำสั่งจาก Pi ทางสาย RX/TX (รับเฉพาะ JSON)
+  while (Serial1.available()) {
+    char c = Serial1.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      uartLine.trim();
+      if (uartLine.startsWith("{")) { piVia = "uart"; handlePi(uartLine); }
+      uartLine = "";
+    } else if (uartLine.length() < 300) {
+      uartLine += c;
+    } else {
+      uartLine = "";  // สัญญาณรบกวน / บรรทัดยาวผิดปกติ
+    }
+  }
+}
+#endif
 
 void serialUpdate() {
   while (Serial.available()) {
@@ -970,7 +1047,7 @@ void touchUpdate() {
   }
   if (t2) {
     if (piLinked()) {  // ต่อกับ Pi: ทัช 2 = ปุ่มคุยกับ Pebbi
-      Serial.println("{\"evt\":\"button\",\"press\":\"short\",\"by\":\"touch2\"}");
+      PiOut.println("{\"evt\":\"button\",\"press\":\"short\",\"by\":\"touch2\"}");
       buzzMode = BUZ_BEEP; buzzStart = millis();
     } else {
       Serial.println("แตะเซ็นเซอร์ 2: เปลี่ยนหน้าจอ");
@@ -986,6 +1063,10 @@ void setup() {
   Serial.begin(115200);
   uint32_t t0 = millis();
   while (!Serial && millis() - t0 < 3000) delay(10);
+#if PI_UART
+  Serial1.setRxBufferSize(1024);  // ต้องตั้งก่อน begin
+  Serial1.begin(PI_UART_BAUD, SERIAL_8N1, PIN_PI_RX, PIN_PI_TX);
+#endif
 
   pinMode(PIN_BUZZER, OUTPUT); digitalWrite(PIN_BUZZER, LOW);
   pinMode(PIN_FAN, OUTPUT); fanSet(FAN_ON_AT_BOOT);
@@ -1024,6 +1105,9 @@ void setup() {
 
 void loop() {
   serialUpdate();
+#if PI_UART
+  uartUpdate();
+#endif
   tofUpdate();
   touchUpdate();
   wheelsUpdate();

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import aiohttp
@@ -26,7 +27,11 @@ class Api:
         self.secret = secret
         self.token: str | None = None
         self.token_at = 0.0
-        self.paired = False
+        self._paired = False
+        # set whenever `paired` flips, so the pairing loop reacts at once instead of on its next poll
+        self.paired_changed = asyncio.Event()
+        # server clock minus Pi clock, in seconds (the Pi has no RTC, its clock can be off)
+        self.clock_skew = 0.0
         self._session: aiohttp.ClientSession | None = None
         self._login_lock = asyncio.Lock()
 
@@ -37,6 +42,24 @@ class Api:
                 headers={"ngrok-skip-browser-warning": "1", "User-Agent": "pebble-pi"},
             )
         return self._session
+
+    @property
+    def paired(self) -> bool:
+        return self._paired
+
+    @paired.setter
+    def paired(self, value: bool) -> None:
+        value = bool(value)
+        if value != self._paired:
+            self._paired = value
+            self.paired_changed.set()
+
+    def _note_clock(self, r: aiohttp.ClientResponse) -> None:
+        try:
+            server = parsedate_to_datetime(r.headers["Date"]).timestamp()
+            self.clock_skew = server - time.time()
+        except Exception:
+            pass
 
     async def close(self):
         if self._session:
@@ -55,6 +78,7 @@ class Api:
                 json={"serialNumber": self.serial, "secret": self.secret},
             ) as r:
                 body = await self._body(r)
+                self._note_clock(r)
                 if r.status != 200:
                     raise ApiError(r.status, str(body))
             self.token = body["accessToken"]
@@ -73,7 +97,7 @@ class Api:
         return self.token  # type: ignore[return-value]
 
     # -------------------------------------------------------------- requests
-    async def request(self, method: str, path: str, json: Any = None) -> Any:
+    async def request(self, method: str, path: str, json: Any = None, timeout: float | None = None) -> Any:
         for attempt in range(2):
             token = await self.ensure_token()
             s = await self.session()
@@ -82,8 +106,10 @@ class Api:
                 f"{self.base}{path}",
                 json=json,
                 headers={"Authorization": f"Bearer {token}"},
+                **({"timeout": aiohttp.ClientTimeout(total=timeout)} if timeout else {}),
             ) as r:
                 body = await self._body(r)
+                self._note_clock(r)
                 if r.status == 401 and attempt == 0:
                     self.token = None  # expired or revoked -> log in again once
                     continue
@@ -104,7 +130,7 @@ class Api:
 
     # -------------------------------------------------------------- robot routes
     async def pairing_code(self) -> dict:
-        return await self.request("POST", "/robot/pairing-code")
+        return await self.request("POST", "/robot/pairing-code", timeout=12)
 
     async def heartbeat(self, battery: int, status: str, fw: str) -> dict:
         res = await self.request(
