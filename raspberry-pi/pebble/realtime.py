@@ -41,7 +41,7 @@ class Realtime:
             log.warning("server error %s", data)
             self.api.token = None  # probably an expired token: log in again
 
-        for event in ("robot:command", "dose:due", "alert", "robot:paired", "robot:unpaired"):
+        for event in ("robot:command", "dose:due", "alert", "robot:paired", "robot:unpaired", "mood:checkin"):
             self.sio.on(event, self._forward(event), namespace=ns)
 
     def _forward(self, event: str):

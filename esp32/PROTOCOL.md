@@ -25,7 +25,7 @@
 | `box` | `{"cmd":"box","do":"open"}` | `open` / `close` / `toggle` |
 | `arm` | `{"cmd":"arm","do":"wave"}` | `wave` โบกมือ · `home` · `{"do":"angle","angle":120}` |
 | `emoji` | `{"cmd":"emoji","score":7,"ms":6000}` | เช็กอินความรู้สึกบนจอ Pi → เล่นอนิเมชัน Mochi ของทีมประมาณ `ms` แล้วกลับหน้าปกติ: 1 😭 frustrated · 2 🥹 embarrassed · 3 😢 confused_2 · 4 😌 content · 5 ☺️ relaxed · 6 😊 happy · 7 🥰 love (แก้ได้ที่ `CHECKIN_ANIMS` ใน .ino) |
-| `face` | `{"cmd":"face","mood":"happy"}` | หน้าบนแผง LED 16x16 ตามอารมณ์ (ดู `MOOD_FACES` ใน .ino) หรือ `{"anim":"excited_2","loops":2}` |
+| `face` | `{"cmd":"face","mood":"idle"}` | `idle` = หน้าปกติ: ต่อ Pi อยู่ = **ตาเปิดแล้วกระพริบเป็นระยะ** (เฟรม 10/5 ของ Mochi `content`) ไม่ต่อ Pi = ท่า `content` ของทีม · Pi ส่งแค่ `idle` (ชื่ออารมณ์อื่นใน `MOOD_FACES` ยังใช้ได้) · หรือ `{"anim":"love","loops":2}` |
 | `buzz` | `{"cmd":"buzz","mode":"double"}` | `beep` `double` `alarm` `off` |
 | `fan` | `{"cmd":"fan","on":true}` | พัดลม |
 | `brightness` | `{"cmd":"brightness","value":40}` | ความสว่างแผง LED 0–255 |

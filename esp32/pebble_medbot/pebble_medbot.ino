@@ -105,9 +105,10 @@ const int PIN_BUZZER       = 40;
 const int PIN_FAN          = 41;
 const int PIN_BATT_SENSE   = 1;
 const float BATT_DIV       = 11.0f;  // แรงดันแบต = แรงดันที่ขา x 11
-// เปอร์เซ็นต์แบตที่ส่งให้ Pi/แอป: ปรับ 2 ค่านี้ให้ตรงกับแบตจริง (ค่าเริ่มต้น = Li-ion 2 ก้อนอนุกรม)
-const int BATT_EMPTY_MV    = 6600;
-const int BATT_FULL_MV     = 8400;
+// เปอร์เซ็นต์แบตที่ส่งให้ Pi/แอป: บอร์ดรับไฟ 24V ทาง XT60 (R24 100k / R27 10k)
+// ค่าเริ่มต้น = แบต Li-ion 6 ก้อนอนุกรม (6S): หมด ~19.8V, เต็ม 25.2V ปรับให้ตรงกับแบตจริงได้
+const int BATT_EMPTY_MV    = 19800;
+const int BATT_FULL_MV     = 25200;
 
 const int TOUCH_ACTIVE     = HIGH;   // TTP223 ค่าปกติ: แตะแล้วเป็น HIGH
 
@@ -212,6 +213,16 @@ uint32_t ledNextAt    = 0;
 int      ledIdleAnim  = 0;      // เล่นเมื่ออนิเมชันแบบกำหนดรอบจบ
 int      ledAlertAnim = 0;      // เล่นระหว่างเตือนกล่องเปิดค้าง
 void ledPlay(int idx, uint16_t loops);
+void ledIdle();
+
+// หน้าปกติตอนต่อกับ Pi: ตาเปิดนิ่ง ๆ แล้วกระพริบเป็นระยะ (ใช้เฟรมจาก Mochi "content")
+bool     blinkMode    = false;
+int      blinkOpen    = -1;     // เฟรมตาเปิด  (content เฟรม 10)
+int      blinkClosed  = -1;     // เฟรมตาปิด  (content เฟรม 5)
+uint8_t  blinkStep    = 0;      // 0 = ตาเปิด, 1 = ตาปิด, 2 = ตาเปิดครู่หนึ่ง (กระพริบ 2 ครั้ง), 3 = ตาปิดอีกครั้ง
+uint32_t blinkNext    = 0;
+const uint16_t BLINK_OPEN_FRAME   = 10;
+const uint16_t BLINK_CLOSED_FRAME = 5;
 
 // ============================ ทัช ============================
 struct Touch {
@@ -239,6 +250,8 @@ String dispId;
 int dispSlot = 0;
 char boxBy[8] = "touch";        // ใครสั่งกล่องครั้งนี้: touch / pi / alarm
 const char* piVia = "usb";      // สายที่ Pi ส่งคำสั่งมาล่าสุด
+// ประกาศก่อนฟังก์ชันแรกของไฟล์: Arduino IDE ใส่ prototype ของ readLines(LineIn&) ไว้ตรงนั้น
+struct LineIn { Stream* port; String buf; const char* via; };
 bool piLinked() { return lastPiAt && (millis() - lastPiAt) < PI_LINK_TIMEOUT_MS; }
 void sendBox(const char* state);
 void sendObstacle();
@@ -358,7 +371,7 @@ void boxUpdate() {
       boxState = BOX_CLOSED;
       boxAlarmActive = false;
       if (buzzMode == BUZ_ALARM) buzzMode = BUZ_OFF;
-      if (ledAnim == ledAlertAnim) ledPlay(ledIdleAnim, 0);
+      if (ledAnim == ledAlertAnim) ledIdle();
       LOGLN("กล่อง: ปิดแล้ว");
       sendBox("closed");
     }
@@ -469,6 +482,7 @@ void ledDrawFrame(uint16_t f) {
 
 // idx < 0 = ปิดจอ, loops = 0 -> เล่นวนไม่หยุด, มากกว่า 0 -> เล่น N รอบแล้วกลับไปท่าปกติ
 void ledPlay(int idx, uint16_t loops) {
+  blinkMode = false;
   if (idx >= MOCHI_ANIM_COUNT) idx = 0;
   ledAnim = idx;
   ledFrame = 0;
@@ -483,7 +497,34 @@ void ledPlay(int idx, uint16_t loops) {
   }
 }
 
+void blinkStart() {
+  if (blinkOpen < 0) { ledPlay(ledIdleAnim, 0); return; }   // ไม่มีเฟรม content: ใช้ท่าปกติของทีม
+  if (!blinkMode) {
+    blinkMode = true;
+    ledAnim = -1;
+    blinkStep = 0;
+    ledDrawFrame(blinkOpen);
+    blinkNext = millis() + random(2500, 5000);
+    LOGLN("จอ LED: หน้าปกติ (กระพริบตา)");
+  }
+}
+
+void blinkUpdate() {
+  uint32_t now = millis();
+  if ((int32_t)(now - blinkNext) < 0) return;
+  switch (blinkStep) {
+    case 0: ledDrawFrame(blinkClosed); blinkStep = 1; blinkNext = now + 130; break;       // หลับตา
+    case 1: ledDrawFrame(blinkOpen);                                                       // ลืมตา
+            if (random(0, 5) == 0) { blinkStep = 2; blinkNext = now + 180; }              // บางครั้งกระพริบ 2 ที
+            else { blinkStep = 0; blinkNext = now + random(2500, 5500); }
+            break;
+    case 2: ledDrawFrame(blinkClosed); blinkStep = 3; blinkNext = now + 120; break;
+    default: ledDrawFrame(blinkOpen); blinkStep = 0; blinkNext = now + random(3000, 6000); break;
+  }
+}
+
 void ledUpdate() {
+  if (blinkMode) { blinkUpdate(); return; }
   if (ledAnim < 0) return;
   uint32_t now = millis();
   if ((int32_t)(now - ledNextAt) < 0) return;
@@ -494,7 +535,7 @@ void ledUpdate() {
   ledFrame++;
   if (ledFrame >= an.count) {
     ledFrame = 0;
-    if (ledLoopsLeft && --ledLoopsLeft == 0) ledPlay(ledIdleAnim, 0);
+    if (ledLoopsLeft && --ledLoopsLeft == 0) ledIdle();
   }
   ledNextAt = nextAt;
 }
@@ -559,7 +600,7 @@ void touchUpdate() {
       // กำลังปล่อยยา รอให้เสร็จก่อน ไม่ทำอะไรเมื่อแตะซ้ำ
     } else if (boxState == BOX_CLOSED) {
       strcpy(boxBy, "touch");
-      ledPlay(findAnim("happy"), 2);
+      if (!piLinked()) ledPlay(findAnim("happy"), 2);   // ต่อ Pi: หน้าปกติกระพริบตาอย่างเดียว
       // ต่อกับ Pi อยู่: Pi เป็นคนจ่ายยาตามเวลา แตะแค่เปิดกล่อง (กันยาออกเกินขนาด)
       if (DISPENSE_ON_TOUCH && !piLinked()) { openAfterPush = true; pusherPush(); }
       else boxStart(true);
@@ -612,8 +653,16 @@ const MoodFace MOOD_FACES[] = {
   {"music",     {"music", "relaxed", nullptr}},
 };
 
+// หน้าปกติ: ต่อ Pi = กระพริบตา, ไม่ต่อ = ท่าปกติของทีม (content)
+void ledIdle() {
+  if (boxAlarmActive) return;
+  if (piLinked()) blinkStart();
+  else ledPlay(ledIdleAnim, 0);
+}
+
 void faceForMood(const String& mood) {
   if (boxAlarmActive) return;   // ระหว่างเตือนกล่องเปิดค้าง ให้หน้าเตือนค้างไว้
+  if (mood == "idle") { ledIdle(); return; }
   for (const MoodFace& m : MOOD_FACES) {
     if (mood != m.mood) continue;
     for (int i = 0; i < 3 && m.anims[i]; i++) {
@@ -646,7 +695,8 @@ void showCheckin(int score, uint32_t holdMs) {
   if (score < 1 || score > 7 || boxAlarmActive) return;
   int idx = findAnim(CHECKIN_ANIMS[score - 1]);
   if (idx < 0) idx = ledIdleAnim;
-  uint16_t loops = max<uint32_t>(1, (holdMs + animMs(idx) / 2) / animMs(idx));
+  uint32_t n = (holdMs + animMs(idx) / 2) / animMs(idx);
+  uint16_t loops = n < 1 ? 1 : n;
   ledPlay(idx, loops);          // เล่นครบรอบแล้วกลับหน้าปกติเอง
   LOGF("เช็กอินความรู้สึก %d -> %s x%u\n", score, MOCHI_ANIMS[idx].name, loops);
 }
@@ -654,7 +704,7 @@ void showCheckin(int score, uint32_t holdMs) {
 // ============================================================
 //        ลิงก์กับ Raspberry Pi: JSON ทีละบรรทัด (ไม่ต้องใช้ไลบรารีเพิ่ม)
 // ============================================================
-String jStr(const String& s, const char* key, const char* def = "") {
+String jStr(const String& s, const char* key, const char* def) {
   String k = String("\"") + key + "\":";
   int i = s.indexOf(k);
   if (i < 0) return def;
@@ -668,6 +718,8 @@ String jStr(const String& s, const char* key, const char* def = "") {
   while (j < (int)s.length() && s[j] != ',' && s[j] != '}') j++;
   return s.substring(i, j);
 }
+
+String jStr(const String& s, const char* key) { return jStr(s, key, ""); }
 
 long jInt(const String& s, const char* key, long def) {
   String v = jStr(s, key, "");
@@ -697,7 +749,7 @@ void sendStatus() {
   if (mv > 500) PiOut.printf("\"battery\":%d,\"battMv\":%d,", batteryPercent(), mv);
   PiOut.printf("\"charging\":false,\"box\":\"%s\",\"dist\":%d,\"tof\":%s,\"fan\":%s,\"anim\":\"%s\"}\n",
                bs[boxState], distMm, tofOk ? "true" : "false", fanOn ? "true" : "false",
-               ledAnim < 0 ? "off" : MOCHI_ANIMS[ledAnim].name);
+               blinkMode ? "blink" : ledAnim < 0 ? "off" : MOCHI_ANIMS[ledAnim].name);
 }
 
 void sendHello() {
@@ -751,8 +803,6 @@ void piDispense(int slot, const String& id) {
   if (boxState != BOX_CLOSED) { sendDispensed(false, "box not closed"); return; }
   openAfterPush = false;
   pusherPush();
-  int ex = findAnim("excited_2");
-  if (ex >= 0) ledPlay(ex, 1);
   buzzMode = BUZ_DOUBLE; buzzStart = millis();
   dispStage = DS_PUSHING;
 }
@@ -810,8 +860,16 @@ void handlePi(const String& s) {
   else { PiOut.printf("{\"evt\":\"error\",\"msg\":\"unknown cmd %s\"}\n", cmd.c_str()); }
 }
 
+bool wasLinked = false;
+
 void piUpdate() {
   uint32_t now = millis();
+  bool linked = piLinked();
+  if (linked != wasLinked) {    // เพิ่งต่อ Pi: หน้าปกติกระพริบตา / Pi หลุด: กลับเป็นท่าของทีม
+    wasLinked = linked;
+    bool idleNow = blinkMode || ledAnim == ledIdleAnim || ledAnim == findAnim("intro");
+    if (idleNow || !linked) ledIdle();
+  }
   // ความปลอดภัย: Pi เงียบ (สายหลุด / Pi ค้าง) ระหว่างที่ Pi สั่งล้ออยู่ -> หยุด
   if (piDriving && lastPiAt && now - lastPiAt > PI_LINK_TIMEOUT_MS) {
     wheelsStop();
@@ -826,7 +884,6 @@ void piUpdate() {
 }
 
 // อ่านบรรทัดจาก USB และสาย RX/TX: บรรทัดที่ขึ้นต้นด้วย { = คำสั่งจาก Pi
-struct LineIn { Stream* port; String buf; const char* via; };
 LineIn usbIn = {&Serial, "", "usb"};
 #if PI_UART
 LineIn uartIn = {&Serial1, "", "uart"};
@@ -882,6 +939,12 @@ void setup() {
   ledFront.show();
   if (LED_COUNT_BACK) { ledBack.begin(); ledBack.clear(); ledBack.show(); }
   ledIdleAnim  = max(findAnim("content"), 0);
+  int c = findAnim("content");
+  if (c >= 0 && MOCHI_ANIMS[c].count > BLINK_OPEN_FRAME) {
+    blinkOpen   = MOCHI_ANIMS[c].start + BLINK_OPEN_FRAME;
+    blinkClosed = MOCHI_ANIMS[c].start + BLINK_CLOSED_FRAME;
+  }
+  randomSeed(esp_random());
   ledAlertAnim = max(findAnim("angry"), 0);
   ledPlay(max(findAnim("intro"), 0), 1);      // เล่น intro หนึ่งรอบ แล้วเข้าท่าปกติ
 

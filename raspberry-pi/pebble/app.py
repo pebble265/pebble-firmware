@@ -424,6 +424,15 @@ class Robot:
     async def _on_realtime(self, event: str, data: dict):
         if event == "robot:command":
             await self.on_command(str(data.get("action", "")))
+        elif event == "mood:checkin":   # check-in from the phone app -> face on the robot
+            try:
+                score = int(data.get("score", 0))
+            except (TypeError, ValueError):
+                score = 0
+            if 1 <= score <= 7:
+                log.info("mood check-in from the app: %d", score)
+                self.mood_today = score
+                self.show_emoji(score)
         elif event in ("robot:paired", "robot:unpaired"):
             log.info("server says %s", event)
             self.api.paired = event == "robot:paired"  # wakes the pairing loop
@@ -526,7 +535,7 @@ class Robot:
         self.voice.stop_speaking()
         self.voice.cancel_listening()
 
-    EMOJI_HOLD_S = 6
+    EMOJI_HOLD_S = 10
 
     def show_emoji(self, score: int):
         """Send the tapped emoji to the robot's LED face (ESP32, over RX/TX) and hold it a few seconds."""
@@ -1016,7 +1025,8 @@ class Robot:
         """Face on the ESP32's LED panel, plus the old pygame face if that screen is used."""
         while True:
             mood = self.current_mood()
-            face = mood if mood in FACE_MOODS else "idle"
+            # LED face: the normal face (eyes blinking) all the time; only a mood check-in changes it
+            face = "idle"
             if face != self._face_last and self.esp.connected and time.monotonic() >= self.emoji_until:
                 self.esp.face(face)
                 self._face_last = face
